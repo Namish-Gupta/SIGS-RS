@@ -1,0 +1,11 @@
+# Eclipse Mosquitto MQTT Broker with TLS configuration
+FROM eclipse-mosquitto:2.0
+
+# Copy our broker configuration
+COPY mosquitto.conf /mosquitto/config/mosquitto.conf
+
+# TLS certificates are volume-mounted at runtime
+# For local dev without TLS, the config disables TLS
+
+EXPOSE 1883    # MQTT (plain, local dev only)
+EXPOSE 8883    # MQTTS (TLS, production)

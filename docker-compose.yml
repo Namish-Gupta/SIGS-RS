@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS Docker Compose — Full Local Stack
+#
+# Services:
+#   sigs-rs      — The gateway application
+#   mosquitto    — Eclipse Mosquitto MQTT broker
+#   timescaledb  — PostgreSQL 16 + TimescaleDB extension
+#
+# SRS §2.4.1.2: Docker-based deployment.
+# SRS REQ-QA-3: identical execution across local and enterprise environments.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+
+  # ─── SIGS-RS Gateway Application ──────────────────────────────────────────
+  sigs-rs:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sigs-rs
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://sigs_user:sigs_pass@timescaledb:5432/sigs_db
+      DATABASE_SSL_MODE: disable
+      MQTT_BROKER_HOST: mosquitto
+      MQTT_BROKER_PORT: 1883
+      MQTT_USE_TLS: "false"
+      INSPECTOR_WINDOW_SECONDS: "10"
+      INSPECTOR_MAX_PACKETS_PER_WINDOW: "50"
+      JWT_SECRET_KEY: local-dev-secret-change-in-prod
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: changeme
+      ADMIN_ROLE: security_engineer
+      DEBUG: "true"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - sigs-net
+
+  # ─── Eclipse Mosquitto MQTT Broker ────────────────────────────────────────
+  mosquitto:
+    build:
+      context: docker
+      dockerfile: Dockerfile.mosquitto
+    container_name: sigs-mosquitto
+    ports:
+      - "1883:1883"   # Plain MQTT (dev)
+      - "8883:8883"   # MQTTS (Phase 4)
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+      - ./certs:/mosquitto/certs:ro
+    restart: unless-stopped
+    networks:
+      - sigs-net
+
+  # ─── PostgreSQL + TimescaleDB ─────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: sigs-timescaledb
+    environment:
+      POSTGRES_DB: sigs_db
+      POSTGRES_USER: sigs_user
+      POSTGRES_PASSWORD: sigs_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sigs_user -d sigs_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sigs-net
+
+volumes:
+  pgdata:
+  mosquitto-data:
+  mosquitto-logs:
+
+networks:
+  sigs-net:
+    driver: bridge

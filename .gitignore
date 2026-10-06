@@ -1,0 +1,49 @@
+# .gitignore for SIGS-RS
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ─── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Environment files ─────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── TLS Certificates (generate locally, never commit) ────────────────────────
+certs/*.crt
+certs/*.key
+certs/*.pem
+certs/*.p12
+
+# ─── Pytest ───────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ─── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# (Docker Compose override for local secrets)
+docker-compose.override.yml
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+*.sql.backup
+pgdata/
