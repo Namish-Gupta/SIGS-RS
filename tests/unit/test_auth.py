@@ -42,7 +42,7 @@ class TestJWTHandler:
         assert user.role == Role.SECURITY_ENGINEER
 
     def test_wrong_secret_raises(self):
-        token = create_access_token("alice", Role.DEVELOPER, SECRET, ALGO, 60)
+        token = create_access_token("alice", Role.BACKEND_DEVELOPER, SECRET, ALGO, 60)
         with pytest.raises(InvalidTokenError):
             decode_token(token, "wrong-secret", ALGO)
 
@@ -79,3 +79,59 @@ class TestRoles:
     def test_is_not_security_engineer(self):
         u = UserInfo(sub="bob", role=Role.QA_TESTER)
         assert is_security_engineer(u) is False
+
+class TestDependenciesAuthz:
+    @pytest.mark.asyncio
+    async def test_require_security_engineer(self):
+        from sigs_rs.auth.dependencies import require_security_engineer
+        from fastapi import HTTPException
+        from unittest.mock import MagicMock
+
+        req = MagicMock()
+        req.app.state.audit_logger = None
+
+        # Pass
+        user = UserInfo(sub="alice", role=Role.SECURITY_ENGINEER)
+        assert await require_security_engineer(req, user) == user
+
+        # Fail
+        user2 = UserInfo(sub="bob", role=Role.QA_TESTER)
+        with pytest.raises(HTTPException) as exc:
+            await require_security_engineer(req, user2)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_require_audit_read_access(self):
+        from sigs_rs.auth.dependencies import require_audit_read_access
+        from fastapi import HTTPException
+        from unittest.mock import MagicMock
+
+        req = MagicMock()
+        req.app.state.audit_logger = None
+
+        allowed = [Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER]
+        for role in allowed:
+            user = UserInfo(sub="test", role=role)
+            assert await require_audit_read_access(req, user) == user
+
+        with pytest.raises(HTTPException) as exc:
+            await require_audit_read_access(req, UserInfo(sub="bob", role=Role.DEVOPS))
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_require_status_access(self):
+        from sigs_rs.auth.dependencies import require_status_access
+        from fastapi import HTTPException
+        from unittest.mock import MagicMock
+
+        req = MagicMock()
+        req.app.state.audit_logger = None
+
+        allowed = [Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER, Role.DEVOPS]
+        for role in allowed:
+            user = UserInfo(sub="test", role=role)
+            assert await require_status_access(req, user) == user
+
+        with pytest.raises(HTTPException) as exc:
+            await require_status_access(req, UserInfo(sub="bob", role="INVALID_ROLE"))
+        assert exc.value.status_code == 403

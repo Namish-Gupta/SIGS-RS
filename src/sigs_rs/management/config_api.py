@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, status
 
-from sigs_rs.auth.dependencies import require_read_access, require_security_engineer
+from sigs_rs.auth.dependencies import require_audit_read_access, require_security_engineer, require_status_access
 from sigs_rs.management.config_service import ConfigService
 from sigs_rs.schemas import (
     AnonymizerConfig,
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/v1/config", tags=["config"])
 )
 async def get_inspector_config(
     request: Request,
-    user: UserInfo = Depends(require_read_access),
+    user: UserInfo = Depends(require_audit_read_access),
 ) -> InspectorConfig:
     """Return current sliding-window thresholds."""
     return await ConfigService.get_inspector_config(request)
@@ -62,7 +62,7 @@ async def update_inspector_config(
 )
 async def get_anonymizer_config(
     request: Request,
-    user: UserInfo = Depends(require_read_access),
+    user: UserInfo = Depends(require_audit_read_access),
 ) -> AnonymizerConfig:
     """Return current PII field list."""
     return await ConfigService.get_anonymizer_config(request)
@@ -93,7 +93,7 @@ async def update_anonymizer_config(
 )
 async def get_middleware_status(
     request: Request,
-    user: UserInfo = Depends(require_read_access),
+    user: UserInfo = Depends(require_status_access),
 ) -> MiddlewareStatusResponse:
     """Return live status of inspector, anonymizer, queue, circuit breaker, and pipeline."""
     return await ConfigService.get_middleware_status(request)

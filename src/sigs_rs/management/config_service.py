@@ -65,6 +65,10 @@ class ConfigService:
         repo = getattr(app.state, "repository", None)
         audit = getattr(app.state, "audit_logger", None)
 
+        # Capture old configuration for audit logging
+        old_config = await ConfigService.get_inspector_config(request)
+        result_status = "success"
+
         # 1. Update in-memory sliding window
         if inspector is not None and hasattr(inspector, "_window"):
             window = inspector._window
@@ -81,6 +85,7 @@ class ConfigService:
                 )
             except Exception as exc:
                 logger.warning("Failed to persist inspector config to DB: %s", exc)
+                result_status = "partial_failure_db"
 
         # 3. Security audit log (SRS BR-4, REQ-SE-4)
         if audit is not None:
@@ -89,10 +94,11 @@ class ConfigService:
                 severity="INFO",
                 user_id=user.sub,
                 detail={
-                    "component": "inspector",
-                    "window_seconds": body.window_seconds,
-                    "max_packets_per_window": body.max_packets_per_window,
-                    "cleanup_interval": body.cleanup_interval,
+                    "role": user.role,
+                    "action": "update_inspector_config",
+                    "old_configuration": old_config.model_dump(),
+                    "new_configuration": body.model_dump(),
+                    "result": result_status,
                 },
             )
 
@@ -139,6 +145,10 @@ class ConfigService:
         repo = getattr(app.state, "repository", None)
         audit = getattr(app.state, "audit_logger", None)
 
+        # Capture old configuration for audit logging
+        old_config = await ConfigService.get_anonymizer_config(request)
+        result_status = "success"
+
         # 1. Update in-memory anonymizer
         if anonymizer is not None and hasattr(anonymizer, "_pii_fields"):
             anonymizer._pii_fields = set(body.pii_fields)
@@ -153,6 +163,7 @@ class ConfigService:
                 )
             except Exception as exc:
                 logger.warning("Failed to persist anonymizer config to DB: %s", exc)
+                result_status = "partial_failure_db"
 
         # 3. Security audit log
         if audit is not None:
@@ -161,8 +172,11 @@ class ConfigService:
                 severity="INFO",
                 user_id=user.sub,
                 detail={
-                    "component": "anonymizer",
-                    "pii_fields": body.pii_fields,
+                    "role": user.role,
+                    "action": "update_anonymizer_config",
+                    "old_configuration": old_config.model_dump(),
+                    "new_configuration": body.model_dump(),
+                    "result": result_status,
                 },
             )
 

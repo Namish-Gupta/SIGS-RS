@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
-from sigs_rs.auth.dependencies import require_read_access
+from sigs_rs.auth.dependencies import require_audit_read_access
 from sigs_rs.management.audit_service import AuditService
 from sigs_rs.schemas import AuditLogResponse, UserInfo
 
@@ -29,7 +29,7 @@ async def get_audit_logs(
     event_type: str | None = Query(default=None, description="Filter by event type"),
     severity: str | None = Query(default=None, description="Filter by severity (INFO, WARN, ERROR, CRITICAL)"),
     sensor_id: str | None = Query(default=None, description="Filter by originating sensor ID"),
-    user: UserInfo = Depends(require_read_access),
+    user: UserInfo = Depends(require_audit_read_access),
 ) -> AuditLogResponse:
     """Return paginated, filtered, and PII-sanitized audit log records."""
     return await AuditService.get_logs(

@@ -120,23 +120,44 @@ async def require_security_engineer(
     return user
 
 
-async def require_read_access(
+async def require_audit_read_access(
     request: Request,
     user: UserInfo = Depends(get_current_user),
 ) -> UserInfo:
     """
-    Dependency: allows Security Engineer, QA Tester, or Developer to view
+    Dependency: allows Security Engineer, QA Tester, or Backend Developer to view
     configuration and audit logs (read-only access).
     """
-    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.DEVELOPER}
+    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER}
     if user.role not in allowed_roles:
         await _audit_auth_failure(
             request,
-            reason=f"Role '{user.role}' does not have read access",
+            reason=f"Role '{user.role}' does not have audit read access",
             user_id=user.sub,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Role '{user.role}' does not have read access. Allowed: {sorted(allowed_roles)}",
+            detail=f"Role '{user.role}' does not have audit read access. Allowed: {sorted(allowed_roles)}",
+        )
+    return user
+
+
+async def require_status_access(
+    request: Request,
+    user: UserInfo = Depends(get_current_user),
+) -> UserInfo:
+    """
+    Dependency: allows DevOps and other roles to view system health and status.
+    """
+    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER, Role.DEVOPS}
+    if user.role not in allowed_roles:
+        await _audit_auth_failure(
+            request,
+            reason=f"Role '{user.role}' does not have status access",
+            user_id=user.sub,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Role '{user.role}' does not have status access. Allowed: {sorted(allowed_roles)}",
         )
     return user

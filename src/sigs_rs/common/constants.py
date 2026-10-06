@@ -93,5 +93,6 @@ class AuditEvent:
 # ─── Role Names ───────────────────────────────────────────────────────────────
 class Role:
     SECURITY_ENGINEER = "security_engineer"
-    DEVELOPER         = "developer"
+    BACKEND_DEVELOPER = "backend_developer"
     QA_TESTER         = "qa_tester"
+    DEVOPS            = "devops"

@@ -27,9 +27,13 @@ def is_security_engineer(user: UserInfo) -> bool:
     return user.role == Role.SECURITY_ENGINEER
 
 
-def is_developer(user: UserInfo) -> bool:
-    return user.role == Role.DEVELOPER
+def is_backend_developer(user: UserInfo) -> bool:
+    return user.role == Role.BACKEND_DEVELOPER
 
 
 def is_qa_tester(user: UserInfo) -> bool:
     return user.role == Role.QA_TESTER
+
+
+def is_devops(user: UserInfo) -> bool:
+    return user.role == Role.DEVOPS
