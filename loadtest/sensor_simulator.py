@@ -3,32 +3,24 @@ Virtual Sensor Grid Simulator — load generator for SIGS-RS.
 
 SRS §2.4.1.3: Python load-generation scripts act as simulated community sensor nodes.
 
-NOTE (Phase 1): Skeleton with profiles defined. Phase 9 adds the full
-                asyncio MQTT publisher implementation.
-
 Usage (Phase 9):
     python -m loadtest.sensor_simulator --profile smoke
     python -m loadtest.sensor_simulator --profile normal
     python -m loadtest.sensor_simulator --profile stress
     python -m loadtest.sensor_simulator --profile benchmark
     python -m loadtest.sensor_simulator --profile dos
-
-Profiles (from Architecture Blueprint §15.2):
-    smoke     — 10 sensors, 1 pkt/s, 30s
-    normal    — 100 sensors, 5 pkt/s, 5min
-    stress    — 1000 sensors, 5 pkt/s, 10min
-    benchmark — 10000 sensors, 5 pkt/s, 5min  (needs 16vCPU, 32GB RAM)
-    dos       — 50 sensors, 100 pkt/s, 2min (tests rate limiting)
+    python -m loadtest.sensor_simulator --mode RATE_ATTACK --dry-run
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
-import random
-import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+import sys
+
+from simulator.cli import build_parser, parse_args_to_config
+from simulator.engine import Simulator
+from simulator.models import SimulationStats, SimulatorConfig, TrafficMode
 
 
 @dataclass
@@ -48,57 +40,53 @@ PROFILES: dict[str, LoadProfile] = {
     "dos":       LoadProfile("dos",       50,     100.0, 120),
 }
 
-RESOURCE_TYPES = ["water", "energy", "air_quality"]
-UNITS = {
-    "water": "liters_per_min",
-    "energy": "kWh",
-    "air_quality": "AQI",
-}
 
-
-def make_packet(sensor_id: str, malicious: bool = False) -> dict:
-    """Generate a single telemetry packet payload."""
-    resource = random.choice(RESOURCE_TYPES)
-    if malicious:
-        value = -999.0 if resource != "air_quality" else 9999.0
-    else:
-        value = round(random.uniform(0.1, 100.0), 2)
-
-    return {
-        "sensor_id": sensor_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "resource_type": resource,
-        "value": value,
-        "unit": UNITS[resource],
-        "metadata": {"battery_level": random.randint(20, 100)},
-        "geo": {
-            "latitude": round(random.uniform(-90, 90), 6),
-            "longitude": round(random.uniform(-180, 180), 6),
-        },
-        "mac_address": ":".join(f"{random.randint(0, 255):02X}" for _ in range(6)),
-    }
-
-
-async def run_profile(profile: LoadProfile) -> None:
+async def run_profile(
+    profile: LoadProfile,
+    dry_run: bool = False,
+    broker_host: str = "localhost",
+    broker_port: int = 1883,
+    use_tls: bool = False,
+) -> SimulationStats:
     """
-    Execute a load profile.
-    Phase 9: replaces this stub with real MQTT publisher connections.
+    Execute a load profile using the full Virtual Sensor Grid simulator engine.
     """
-    print(f"[simulator] Profile '{profile.name}' stub — Phase 9 implements MQTT publishing.")
-    print(f"  Sensors: {profile.sensors}")
-    print(f"  Rate:    {profile.rate_per_sensor} pkt/s per sensor")
-    print(f"  Total:   {profile.sensors * profile.rate_per_sensor} pkt/s")
-    print(f"  Duration:{profile.duration_seconds}s")
+    total_rate = profile.sensors * profile.rate_per_sensor
+    mode = TrafficMode.RATE_ATTACK if profile.name == "dos" else TrafficMode.NORMAL
+
+    config = SimulatorConfig(
+        sensors=profile.sensors,
+        packets_per_sec=total_rate,
+        duration_seconds=float(profile.duration_seconds),
+        anomaly_percent=profile.malicious_ratio * 100.0,
+        traffic_mode=mode,
+        broker_host=broker_host,
+        broker_port=broker_port,
+        use_tls=use_tls,
+        dry_run=dry_run,
+    )
+    sim = Simulator(config)
+    return await sim.run()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    config = parse_args_to_config(args)
+    sim = Simulator(config)
+
+    try:
+        stats = asyncio.run(sim.run())
+        print("\n" + stats.report())
+        return 0
+    except KeyboardInterrupt:
+        print("\n[simulator] Simulation stopped by user.")
+        return 0
+    except Exception as exc:
+        print(f"\n[simulator] Error running profile: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SIGS-RS Load Simulator")
-    parser.add_argument(
-        "--profile",
-        choices=list(PROFILES),
-        default="smoke",
-        help="Load test profile to run.",
-    )
-    args = parser.parse_args()
-    profile = PROFILES[args.profile]
-    asyncio.run(run_profile(profile))
+    sys.exit(main())
