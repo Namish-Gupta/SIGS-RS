@@ -18,8 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency spec and install to a prefix dir for clean copy to runtime
+# Copy source and dependency spec and install to a prefix dir for clean copy to runtime
 COPY pyproject.toml .
+COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install .
 
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────

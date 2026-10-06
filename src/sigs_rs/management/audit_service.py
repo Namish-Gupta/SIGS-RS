@@ -78,7 +78,14 @@ class AuditService:
                     sensor_id=sensor_id,
                 )
                 for row in raw_rows:
-                    cleaned_detail = _sanitize_audit_detail(row.get("detail", {}), forbidden_set)
+                    detail_val = row.get("detail", {})
+                    if isinstance(detail_val, str):
+                        import json
+                        try:
+                            detail_val = json.loads(detail_val)
+                        except Exception:
+                            detail_val = {}
+                    cleaned_detail = _sanitize_audit_detail(detail_val, forbidden_set)
                     entries.append(
                         AuditLogEntry(
                             id=row.get("id", 0),

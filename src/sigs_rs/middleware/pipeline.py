@@ -6,9 +6,6 @@ security middleware, and forwards sanitized packets to the DB.
 
 SRS BR-2: under no circumstances shall telemetry bypass the middleware layers.
 SRS REQ-SF-3: if this pipeline crashes, the system enters fail-closed state.
-
-NOTE (Phase 1): Skeleton with complete docstrings.
-                Full wiring implemented in Phase 4.
 """
 from __future__ import annotations
 
@@ -36,7 +33,8 @@ class MiddlewarePipeline:
     Main processing loop: Queue → Inspector → Anonymizer → DB.
 
     Runs as a long-lived asyncio Task (started in main.py lifespan).
-    Sets app.state.fail_closed = True on unhandled exceptions (REQ-SF-3).
+    Uses bounded batching with a flush interval for high throughput
+    while preserving the strict Inspector → Anonymizer → Persistence invariant.
     """
 
     def __init__(
@@ -47,6 +45,8 @@ class MiddlewarePipeline:
         repository: "TelemetryRepository",
         circuit_breaker: "CircuitBreaker",
         audit_logger: "AuditLogger",
+        batch_size: int = 100,
+        flush_interval_seconds: float = 0.05,
     ) -> None:
         self._queue = queue
         self._inspector = inspector
@@ -54,55 +54,101 @@ class MiddlewarePipeline:
         self._repo = repository
         self._cb = circuit_breaker
         self._audit = audit_logger
+        self._batch_size = max(1, batch_size)
+        self._flush_interval = max(0.001, flush_interval_seconds)
         self._running = False
         self._processed = 0
         self._sanitized = 0
 
     async def run(self) -> None:
         """
-        Consume packets from the queue and process them through the pipeline.
+        Consume packets from the queue in batches and process them.
         """
-        logger.info("Middleware pipeline started.")
+        logger.info("Middleware pipeline started (batch_size=%d, flush_interval=%.3fs).", self._batch_size, self._flush_interval)
         self._running = True
+        loop = asyncio.get_running_loop()
+
         while self._running:
-            packet = await self._queue.get()
             try:
-                await self.process_packet(packet)
+                packet = await self._queue.get()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("Error retrieving packet from queue: %s", exc)
+                continue
+
+            raw_batch = [packet]
+            deadline = loop.time() + self._flush_interval
+
+            while len(raw_batch) < self._batch_size:
+                timeout = deadline - loop.time()
+                if timeout <= 0:
+                    break
+                try:
+                    next_pkt = await asyncio.wait_for(self._queue.get(), timeout=timeout)
+                    raw_batch.append(next_pkt)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    break
+
+            try:
+                await self.process_batch(raw_batch)
             finally:
-                self._queue.task_done()
+                for _ in raw_batch:
+                    self._queue.task_done()
+
+    async def process_batch(self, raw_batch: list) -> bool:
+        """
+        Process a batch of queued packets through the security boundary.
+
+        Each packet individually and independently undergoes:
+        1. Inspector verification (rate limits & payload integrity).
+        2. Anonymization (stripping PII).
+
+        Malicious or invalid packets are dropped individually without causing
+        valid packets in the same batch to be dropped.
+        """
+        sanitized_batch = []
+        for packet in raw_batch:
+            self._processed += 1
+
+            # 1. Inspector
+            if self._inspector.inspect(packet) is not VerificationResult.VERIFIED:
+                continue
+
+            # 2. Privacy Anonymizer
+            try:
+                sanitized = self._anonymizer.anonymize(packet)
+            except AnonymizerError as exc:
+                if self._audit:
+                    await self._audit.log(
+                        AuditEvent.ANONYMIZER_FAIL_SECURE,
+                        severity="ERROR",
+                        sensor_id=getattr(packet, "sensor_id", "<unknown>"),
+                        detail={"reason": str(exc)},
+                    )
+                logger.error("Anonymization failed for sensor %s; packet dropped.", getattr(packet, "sensor_id", "<unknown>"))
+                continue
+
+            sanitized_batch.append(sanitized)
+
+        if not sanitized_batch:
+            return False
+
+        # 3. Persistence (via Circuit Breaker)
+        try:
+            if len(sanitized_batch) == 1:
+                await self._cb.call(self._repo.insert(sanitized_batch[0]))
+            else:
+                await self._cb.call(self._repo.insert_batch(sanitized_batch))
+            self._sanitized += len(sanitized_batch)
+            return True
+        except CircuitBreakerOpenError:
+            logger.warning("Circuit breaker open; %d sanitized packet(s) dropped.", len(sanitized_batch))
+            return False
 
     async def process_packet(self, packet) -> bool:
-        """
-        Process one queued packet through the mandatory security boundary.
-
-        The anonymizer is called only after the Inspector returns VERIFIED.
-        An anonymization failure is audit-logged and dropped before the
-        repository can receive any representation of the raw packet.
-        """
-        self._processed += 1
-        if self._inspector.inspect(packet) is not VerificationResult.VERIFIED:
-            return False
-
-        try:
-            sanitized = self._anonymizer.anonymize(packet)
-        except AnonymizerError as exc:
-            await self._audit.log(
-                AuditEvent.ANONYMIZER_FAIL_SECURE,
-                severity="ERROR",
-                sensor_id=packet.sensor_id,
-                detail={"reason": str(exc)},
-            )
-            logger.error("Anonymization failed for sensor %s; packet dropped.", packet.sensor_id)
-            return False
-
-        try:
-            await self._cb.call(self._repo.insert(sanitized))
-        except CircuitBreakerOpenError:
-            logger.warning("Circuit breaker open; sanitized packet dropped.")
-            return False
-
-        self._sanitized += 1
-        return True
+        """Process one packet (convenience wrapper over process_batch)."""
+        return await self.process_batch([packet])
 
     async def stop(self) -> None:
         self._running = False
