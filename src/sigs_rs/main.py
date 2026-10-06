@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from sigs_rs.auth.auth_router import router as auth_router
@@ -40,15 +41,15 @@ from sigs_rs.middleware.inspector import AnomalousPacketInspector
 from sigs_rs.middleware.payload_validator import PayloadValidator
 from sigs_rs.middleware.pipeline import MiddlewarePipeline
 from sigs_rs.middleware.sliding_window import SlidingWindow
+from sigs_rs.observability.logging import configure_logging
+from sigs_rs.observability.metrics import get_metrics
+from sigs_rs.observability.middleware import CorrelationIdMiddleware
 from sigs_rs.persistence.circuit_breaker import CircuitBreaker
 from sigs_rs.persistence.database import DatabasePool
 from sigs_rs.persistence.repository import TelemetryRepository
 
+configure_logging(level="INFO", json_format=True)
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 
 
 @asynccontextmanager
@@ -127,6 +128,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.mqtt = mqtt
     app.state.fail_closed = False
     app.state.environment = settings.app_env
+    app.state.metrics = get_metrics()
 
     # ── Start background tasks ────────────────────────────────────────────────
     import asyncio
@@ -257,19 +259,81 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware ────────────────────────────────────────────────────────────
-    @app.middleware("http")
-    async def enforce_payload_size_limit(request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                if int(content_length) > settings.max_payload_size_bytes:
-                    return JSONResponse(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        content={"detail": f"Payload exceeds {settings.max_payload_size_bytes} bytes limit."},
-                    )
-            except ValueError:
-                pass
-        return await call_next(request)
+    app.add_middleware(CorrelationIdMiddleware)
+
+    class PayloadSizeLimitMiddleware:
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                return await self.app(scope, receive, send)
+
+            # Fast path check Content-Length
+            content_length = dict(scope.get("headers", [])).get(b"content-length")
+            if content_length:
+                try:
+                    if int(content_length) > settings.max_payload_size_bytes:
+                        if scope["path"].startswith("/api/v1/telemetry"):
+                            metrics = get_metrics()
+                            metrics.record_packet_received(1)
+                            metrics.record_packet_malformed(1)
+                        await self._send_413(send)
+                        return
+                except ValueError:
+                    pass
+
+            # Slow path: read stream
+            body_bytes = bytearray()
+            more_body = True
+
+            while more_body:
+                message = await receive()
+                if message["type"] == "http.disconnect":
+                    # Client disconnected early, pass it down
+                    async def early_disconnect_receive():
+                        return {"type": "http.disconnect"}
+                    return await self.app(scope, early_disconnect_receive, send)
+
+                chunk = message.get("body", b"")
+                more_body = message.get("more_body", False)
+                body_bytes.extend(chunk)
+
+                if len(body_bytes) > settings.max_payload_size_bytes:
+                    if scope["path"].startswith("/api/v1/telemetry"):
+                        metrics = get_metrics()
+                        metrics.record_packet_received(1)
+                        metrics.record_packet_malformed(1)
+                    await self._send_413(send)
+                    return
+
+            chunks = [bytes(body_bytes)]
+
+            async def new_receive():
+                if chunks:
+                    chunk = chunks.pop(0)
+                    return {"type": "http.request", "body": chunk, "more_body": False}
+                return await receive()
+
+            await self.app(scope, new_receive, send)
+
+        async def _send_413(self, send):
+            import json
+            response = json.dumps({"detail": f"Payload exceeds {settings.max_payload_size_bytes} bytes limit."}).encode()
+            await send({
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(response)).encode())
+                ]
+            })
+            await send({
+                "type": "http.response.body",
+                "body": response,
+            })
+
+    app.add_middleware(PayloadSizeLimitMiddleware)
 
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health_router)
@@ -279,6 +343,21 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
 
     # ── Global exception handlers ─────────────────────────────────────────────
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        if request.url.path.startswith("/api/v1/telemetry"):
+            metrics = getattr(app.state, "metrics", None) or get_metrics()
+            count = 1
+            body = getattr(exc, "body", None)
+            if request.url.path.endswith("/batch") and isinstance(body, dict) and "packets" in body and isinstance(body["packets"], list):
+                count = len(body["packets"])
+            metrics.record_packet_received(count)
+            metrics.record_packet_malformed(count)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": exc.errors()},
+        )
+
     @app.exception_handler(QueueFullError)
     async def _queue_full(_: Request, exc: QueueFullError) -> JSONResponse:
         return JSONResponse(

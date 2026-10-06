@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from sigs_rs.common.constants import AuditEvent
 from sigs_rs.common.exceptions import AnonymizerError, CircuitBreakerOpenError
 from sigs_rs.middleware.inspector import VerificationResult
+from sigs_rs.observability.metrics import MetricsCollector, get_metrics
 
 if TYPE_CHECKING:
     from sigs_rs.ingestion.buffer import IngestionQueue
@@ -47,6 +49,7 @@ class MiddlewarePipeline:
         audit_logger: "AuditLogger",
         batch_size: int = 100,
         flush_interval_seconds: float = 0.05,
+        metrics: "MetricsCollector | None" = None,
     ) -> None:
         self._queue = queue
         self._inspector = inspector
@@ -56,6 +59,7 @@ class MiddlewarePipeline:
         self._audit = audit_logger
         self._batch_size = max(1, batch_size)
         self._flush_interval = max(0.001, flush_interval_seconds)
+        self._metrics = metrics or get_metrics()
         self._running = False
         self._processed = 0
         self._sanitized = 0
@@ -64,7 +68,11 @@ class MiddlewarePipeline:
         """
         Consume packets from the queue in batches and process them.
         """
-        logger.info("Middleware pipeline started (batch_size=%d, flush_interval=%.3fs).", self._batch_size, self._flush_interval)
+        logger.info(
+            "Middleware pipeline started (batch_size=%d, flush_interval=%.3fs).",
+            self._batch_size,
+            self._flush_interval,
+        )
         self._running = True
         loop = asyncio.get_running_loop()
 
@@ -107,18 +115,29 @@ class MiddlewarePipeline:
         Malicious or invalid packets are dropped individually without causing
         valid packets in the same batch to be dropped.
         """
+        batch_t0 = time.monotonic()
         sanitized_batch = []
         for packet in raw_batch:
             self._processed += 1
 
             # 1. Inspector
-            if self._inspector.inspect(packet) is not VerificationResult.VERIFIED:
+            insp_t0 = time.monotonic()
+            insp_res = self._inspector.inspect(packet)
+            self._metrics.record_inspector_latency(time.monotonic() - insp_t0)
+
+            if insp_res is not VerificationResult.VERIFIED:
+                if insp_res == VerificationResult.RATE_LIMIT_EXCEEDED:
+                    self._metrics.record_packet_dropped_rate()
+                elif insp_res == VerificationResult.INVALID_METRIC:
+                    self._metrics.record_packet_dropped_invalid_metrics()
                 continue
 
             # 2. Privacy Anonymizer
+            anon_t0 = time.monotonic()
             try:
                 sanitized = self._anonymizer.anonymize(packet)
             except AnonymizerError as exc:
+                self._metrics.record_packet_dropped_anonymization()
                 if self._audit:
                     await self._audit.log(
                         AuditEvent.ANONYMIZER_FAIL_SECURE,
@@ -126,25 +145,39 @@ class MiddlewarePipeline:
                         sensor_id=getattr(packet, "sensor_id", "<unknown>"),
                         detail={"reason": str(exc)},
                     )
-                logger.error("Anonymization failed for sensor %s; packet dropped.", getattr(packet, "sensor_id", "<unknown>"))
+                logger.error(
+                    "Anonymization failed for sensor %s; packet dropped.",
+                    getattr(packet, "sensor_id", "<unknown>"),
+                )
                 continue
+            finally:
+                self._metrics.record_anonymizer_latency(time.monotonic() - anon_t0)
 
             sanitized_batch.append(sanitized)
 
         if not sanitized_batch:
+            self._metrics.record_processing_latency(time.monotonic() - batch_t0, count=1)
             return False
 
         # 3. Persistence (via Circuit Breaker)
+        db_t0 = time.monotonic()
         try:
             if len(sanitized_batch) == 1:
                 await self._cb.call(self._repo.insert(sanitized_batch[0]))
             else:
                 await self._cb.call(self._repo.insert_batch(sanitized_batch))
             self._sanitized += len(sanitized_batch)
+            self._metrics.record_packet_persisted(len(sanitized_batch))
             return True
         except CircuitBreakerOpenError:
-            logger.warning("Circuit breaker open; %d sanitized packet(s) dropped.", len(sanitized_batch))
+            logger.warning(
+                "Circuit breaker open; %d sanitized packet(s) dropped.",
+                len(sanitized_batch),
+            )
             return False
+        finally:
+            self._metrics.record_database_latency(time.monotonic() - db_t0)
+            self._metrics.record_processing_latency(time.monotonic() - batch_t0, count=1)
 
     async def process_packet(self, packet) -> bool:
         """Process one packet (convenience wrapper over process_batch)."""
