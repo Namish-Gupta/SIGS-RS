@@ -42,6 +42,7 @@ class AuditLogger:
         severity: str = "INFO",
         sensor_id: str | None = None,
         user_id: str | None = None,
+        role: str | None = None,
         detail: dict[str, Any] | None = None,
         ip_address: str | None = None,
     ) -> None:

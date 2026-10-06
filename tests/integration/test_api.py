@@ -51,7 +51,7 @@ def qa_token() -> str:
 @pytest.fixture
 def dev_token() -> str:
     """Obtain a valid JWT for a developer."""
-    return make_token(Role.DEVELOPER, "developer_user")
+    return make_token(Role.BACKEND_DEVELOPER, "developer_user")
 
 
 @pytest.fixture
