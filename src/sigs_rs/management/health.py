@@ -9,8 +9,10 @@ from __future__ import annotations
 import time
 
 from fastapi import APIRouter, Request, Response, status
+from fastapi.responses import JSONResponse
 
-from sigs_rs.schemas import HealthResponse, MetricsResponse
+from sigs_rs.observability.metrics import get_metrics
+from sigs_rs.schemas import HealthResponse
 
 router = APIRouter(tags=["health"])
 
@@ -82,37 +84,30 @@ async def readiness(request: Request, response: Response) -> HealthResponse:
     return res
 
 
-@router.get("/metrics", response_model=MetricsResponse, summary="Runtime metrics")
-async def metrics(request: Request) -> MetricsResponse:
+@router.get("/metrics", summary="Runtime metrics")
+async def metrics(request: Request) -> Response:
     """
-    Expose runtime metrics for Prometheus scraping / K8s HPA.
+    Expose runtime metrics for Prometheus scraping / K8s HPA or JSON clients.
 
-    SRS REQ-PF-4: HPA triggers on CPU > 75% for > 2 min; these metrics
-                  inform the /health circuit for that decision.
+    SRS §3.3: Expose Prometheus-compatible metrics through GET /metrics.
+    - Returns Prometheus text exposition format (v0.0.4) by default or when
+      requested via Accept: text/plain, openmetrics, or ?format=prometheus.
+    - Returns JSON structure when requested via Accept: application/json or ?format=json.
     """
     app = request.app
-    queue = getattr(app.state, "queue", None)
-    inspector = getattr(app.state, "inspector", None)
-    pipeline = getattr(app.state, "pipeline", None)
-    cb = getattr(app.state, "circuit_breaker", None)
+    collector = getattr(app.state, "metrics", None) or get_metrics()
 
-    inspector_stats = inspector.stats if inspector else {}
-    pipeline_stats = pipeline.stats if pipeline else {}
+    accept = request.headers.get("accept", "")
+    req_format = request.query_params.get("format", "").lower()
 
-    return MetricsResponse(
-        packets_ingested_total=(
-            inspector_stats.get("passed", 0) +
-            inspector_stats.get("dropped_rate", 0) +
-            inspector_stats.get("dropped_impossible", 0)
-        ),
-        packets_dropped_total=(
-            inspector_stats.get("dropped_rate", 0) +
-            inspector_stats.get("dropped_impossible", 0)
-        ),
-        packets_sanitized_total=pipeline_stats.get("sanitized", 0),
-        queue_depth=queue.depth if queue else 0,
-        circuit_breaker_state=cb.state.name if cb else "CLOSED",
-        uptime_seconds=round(time.monotonic() - _start_time, 2),
+    if "application/json" in accept or req_format == "json":
+        data = collector.to_dict(app_state=getattr(app, "state", None))
+        return JSONResponse(content=data)
+
+    prom_text = collector.to_prometheus_text(app_state=getattr(app, "state", None))
+    return Response(
+        content=prom_text,
+        media_type="text/plain; version=0.0.4; charset=utf-8",
     )
 
 

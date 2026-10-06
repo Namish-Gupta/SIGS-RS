@@ -24,6 +24,7 @@ from sigs_rs.common.exceptions import (
     PayloadTooLargeError,
     QueueFullError,
 )
+from sigs_rs.observability.metrics import MetricsCollector, get_metrics
 from sigs_rs.telemetry.models import RawTelemetryPacket
 from sigs_rs.telemetry.validator import TelemetryValidator
 
@@ -103,6 +104,7 @@ class MQTTSubscriber:
         audit_logger: "AuditLogger | None" = None,
         reconnect_initial_interval: float = 1.0,
         reconnect_max_interval: float = 30.0,
+        metrics: "MetricsCollector | None" = None,
     ) -> None:
         self._settings = settings
         self._queue = queue
@@ -110,6 +112,7 @@ class MQTTSubscriber:
         self._audit = audit_logger
         self._reconnect_initial_interval = reconnect_initial_interval
         self._reconnect_max_interval = reconnect_max_interval
+        self._metrics = metrics or get_metrics()
 
         self._running: bool = False
         self._is_connected: bool = False
@@ -180,6 +183,7 @@ class MQTTSubscriber:
                 async with aiomqtt.Client(**client_kwargs) as client:
                     self._client = client
                     self._is_connected = True
+                    self._metrics.set_mqtt_connected(True)
                     backoff = self._reconnect_initial_interval  # Reset backoff on successful connect
                     logger.info(
                         "Connected to MQTT broker at %s:%d (TLS=%s)",
@@ -201,6 +205,7 @@ class MQTTSubscriber:
                 break
             except Exception as exc:
                 self._is_connected = False
+                self._metrics.set_mqtt_connected(False)
                 self._client = None
                 if not self._running:
                     break
@@ -218,6 +223,7 @@ class MQTTSubscriber:
                 backoff = min(backoff * 2, self._reconnect_max_interval)
 
         self._is_connected = False
+        self._metrics.set_mqtt_connected(False)
         self._client = None
         logger.info("MQTT subscriber stopped.")
 
@@ -225,6 +231,7 @@ class MQTTSubscriber:
         """Gracefully disconnect and stop the MQTT subscriber."""
         self._running = False
         self._is_connected = False
+        self._metrics.set_mqtt_connected(False)
         logger.info("MQTT subscriber stopping.")
 
     async def handle_message(self, message: Any) -> bool:
@@ -236,6 +243,7 @@ class MQTTSubscriber:
         is returned to the client or published to the broker.
         """
         self._packets_received += 1
+        self._metrics.record_packet_received()
         topic = str(getattr(message, "topic", "unknown"))
         payload = getattr(message, "payload", b"")
 
@@ -249,6 +257,7 @@ class MQTTSubscriber:
         # 1. Payload size enforcement (SRS REQ-TI-3: 512 KB)
         if len(raw_bytes) > self._settings.max_payload_size_bytes:
             self._packets_dropped_size += 1
+            self._metrics.record_packet_malformed()
             logger.warning(
                 "MQTT packet dropped: oversized payload (%d bytes > %d bytes limit) on topic %s",
                 len(raw_bytes),
@@ -268,6 +277,7 @@ class MQTTSubscriber:
             packet = self._validator.validate_bytes(raw_bytes)
         except (MalformedPayloadError, PayloadTooLargeError) as exc:
             self._packets_dropped_malformed += 1
+            self._metrics.record_packet_malformed()
             logger.warning(
                 "MQTT packet dropped: schema validation failed on topic %s: %s",
                 topic,
@@ -282,6 +292,7 @@ class MQTTSubscriber:
             return False  # Silent drop
         except Exception as exc:
             self._packets_dropped_malformed += 1
+            self._metrics.record_packet_malformed()
             logger.warning("MQTT packet dropped: unexpected error on topic %s: %s", topic, exc)
             return False  # Silent drop
 
@@ -289,6 +300,7 @@ class MQTTSubscriber:
         try:
             await self._queue.put(packet)
             self._packets_enqueued += 1
+            self._metrics.record_packet_valid()
             logger.debug(
                 "MQTT packet enqueued: sensor=%s resource=%s depth=%d",
                 packet.sensor_id,

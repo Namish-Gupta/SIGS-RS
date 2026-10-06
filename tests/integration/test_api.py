@@ -119,9 +119,16 @@ class TestHealthEndpoints:
 
 class TestMetricsEndpoints:
     async def test_metrics_ok(self, client: AsyncClient):
+        # Prometheus format (default)
         resp = await client.get("/metrics")
         assert resp.status_code == 200
-        data = resp.json()
+        assert "sigs_packets_received_total" in resp.text
+        assert "# HELP" in resp.text
+
+        # JSON format
+        resp_json = await client.get("/metrics", headers={"Accept": "application/json"})
+        assert resp_json.status_code == 200
+        data = resp_json.json()
         assert "packets_ingested_total" in data
         assert "packets_dropped_total" in data
         assert "packets_sanitized_total" in data

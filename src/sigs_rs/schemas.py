@@ -119,12 +119,29 @@ class HealthResponse(BaseModel):
 
 
 class MetricsResponse(BaseModel):
-    packets_ingested_total: int
-    packets_dropped_total: int
-    packets_sanitized_total: int
-    queue_depth: int
-    circuit_breaker_state: str
-    uptime_seconds: float
+    # Production-style Phase 10 metrics
+    packets_received_total: int = 0
+    packets_valid_total: int = 0
+    packets_malformed_total: int = 0
+    packets_dropped_rate_total: int = 0
+    packets_dropped_invalid_metrics_total: int = 0
+    packets_dropped_anonymization_total: int = 0
+    packets_persisted_total: int = 0
+    current_queue_size: int = 0
+    processing_latency: dict[str, float] = Field(default_factory=dict)
+    inspector_latency: dict[str, float] = Field(default_factory=dict)
+    anonymizer_latency: dict[str, float] = Field(default_factory=dict)
+    database_latency: dict[str, float] = Field(default_factory=dict)
+    mqtt_connection_state: int = 0
+    active_sensors: int = 0
+
+    # Backward-compatible fields
+    packets_ingested_total: int = 0
+    packets_dropped_total: int = 0
+    packets_sanitized_total: int = 0
+    queue_depth: int = 0
+    circuit_breaker_state: str = "CLOSED"
+    uptime_seconds: float = 0.0
 
 
 class MiddlewareStatusResponse(BaseModel):

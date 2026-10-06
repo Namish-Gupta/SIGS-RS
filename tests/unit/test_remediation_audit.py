@@ -68,6 +68,7 @@ class TestCircuitBreakerRemediation:
 
         assert cb.state == CBState.OPEN
         assert cb.is_open is True
+        await asyncio.sleep(0.01)
 
     @pytest.mark.asyncio
     async def test_cb_fast_write_remains_closed(self):
@@ -116,6 +117,7 @@ class TestCircuitBreakerRemediation:
         await cb.call(fast_write())
         assert cb.state == CBState.CLOSED
         on_close.assert_called_once()
+        await asyncio.sleep(0.01)
 
     @pytest.mark.asyncio
     async def test_cb_half_open_failure_re_trips(self):
@@ -291,8 +293,9 @@ class TestUnauthorizedAuditLoggingRemediation:
     @pytest.mark.asyncio
     async def test_audit_logger_error_does_not_break_auth(self):
         """Internal error in AuditLogger must never break authentication failure flow."""
-        failing_audit = AsyncMock()
-        failing_audit.log.side_effect = RuntimeError("Audit DB connection failed")
+        failing_audit = MagicMock()
+        async def fake_log(*args, **kwargs): raise RuntimeError("Audit DB connection failed")
+        failing_audit.log = fake_log
 
         app = FastAPI()
         app.state.audit_logger = failing_audit

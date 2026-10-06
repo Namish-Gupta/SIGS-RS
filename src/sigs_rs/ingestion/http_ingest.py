@@ -6,8 +6,6 @@ These FastAPI routes form the HTTP side of the ingestion layer.
 """
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from sigs_rs.common.exceptions import (
@@ -16,6 +14,7 @@ from sigs_rs.common.exceptions import (
     QueueFullError,
 )
 from sigs_rs.config import Settings, get_settings
+from sigs_rs.observability.metrics import get_metrics
 from sigs_rs.schemas import (
     BatchIngestRequest,
     BatchIngestResponse,
@@ -50,22 +49,12 @@ async def ingest_packet(
     - Validates JSON schema via Pydantic (SRS REQ-TI-2).
     - Enqueues for Anomalous Packet Inspector (SRS REQ-TI-4).
     """
-    # Size check (Content-Length header and body bytes)
-    content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > settings.max_payload_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Payload exceeds {settings.max_payload_size_bytes} bytes limit.",
-        )
-    body_bytes = await request.body()
-    if len(body_bytes) > settings.max_payload_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Payload exceeds {settings.max_payload_size_bytes} bytes limit.",
-        )
+    metrics = getattr(request.app.state, "metrics", None) or get_metrics()
+    metrics.record_packet_received()
 
     try:
         await queue.put(payload)
+        metrics.record_packet_valid()
     except QueueFullError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -88,18 +77,8 @@ async def ingest_batch(
     queue=Depends(_get_queue),
 ) -> BatchIngestResponse:
     """Accept multiple telemetry packets in one request."""
-    content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > settings.max_payload_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Payload exceeds {settings.max_payload_size_bytes} bytes limit.",
-        )
-    body_bytes = await request.body()
-    if len(body_bytes) > settings.max_payload_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Payload exceeds {settings.max_payload_size_bytes} bytes limit.",
-        )
+    metrics = getattr(request.app.state, "metrics", None) or get_metrics()
+    metrics.record_packet_received(count=len(body.packets))
 
     accepted = 0
     rejected = 0
@@ -107,6 +86,7 @@ async def ingest_batch(
     for packet in body.packets:
         try:
             await queue.put(packet)
+            metrics.record_packet_valid()
             accepted += 1
         except QueueFullError:
             rejected += 1

@@ -89,6 +89,9 @@ class CircuitBreaker:
         current = self.state  # triggers OPEN → HALF_OPEN check
 
         if current == CBState.OPEN:
+            import inspect
+            if inspect.iscoroutine(coro):
+                coro.close()
             raise CircuitBreakerOpenError("Circuit breaker is OPEN — DB writes halted.")
 
         # CLOSED or HALF_OPEN: measure latency
