@@ -22,7 +22,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-for-api-tests")
 os.environ.setdefault("ADMIN_USERNAME", "testadmin")
 os.environ.setdefault("ADMIN_PASSWORD", "testpassword")
 os.environ.setdefault("MQTT_USE_TLS", "false")
-os.environ.setdefault("MQTT_BROKER_PORT", "1883")
+os.environ.setdefault("MQTT_BROKER_PORT", "18883")
 
 
 def make_token(role: str, sub: str = "testuser") -> str:

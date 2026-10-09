@@ -115,6 +115,7 @@ class MQTTSubscriber:
         self._metrics = metrics or get_metrics()
 
         self._running: bool = False
+        self._stop_requested: bool = False
         self._is_connected: bool = False
         self._client: aiomqtt.Client | None = None
 
@@ -166,6 +167,10 @@ class MQTTSubscriber:
         Connect to the MQTT broker and consume telemetry messages.
         Maintains connection with automatic reconnect and exponential backoff.
         """
+        if self._stop_requested:
+            logger.info("MQTT subscriber start requested after stop; aborting.")
+            return
+
         self._running = True
         backoff = self._reconnect_initial_interval
 
@@ -177,61 +182,110 @@ class MQTTSubscriber:
             self._settings.mqtt_topic_prefix,
         )
 
-        while self._running:
-            try:
-                client_kwargs = self._build_client_kwargs()
-                async with aiomqtt.Client(**client_kwargs) as client:
-                    self._client = client
-                    self._is_connected = True
-                    self._metrics.set_mqtt_connected(True)
-                    backoff = self._reconnect_initial_interval  # Reset backoff on successful connect
-                    logger.info(
-                        "Connected to MQTT broker at %s:%d (TLS=%s)",
+        try:
+            while self._running:
+                client_inst: aiomqtt.Client | None = None
+                try:
+                    client_kwargs = self._build_client_kwargs()
+                    async with aiomqtt.Client(**client_kwargs) as client:
+                        client_inst = client
+                        self._client = client
+                        self._is_connected = True
+                        self._metrics.set_mqtt_connected(True)
+                        backoff = self._reconnect_initial_interval  # Reset backoff on successful connect
+                        logger.info(
+                            "Connected to MQTT broker at %s:%d (TLS=%s)",
+                            self._settings.mqtt_broker_host,
+                            self._settings.mqtt_broker_port,
+                            self._settings.mqtt_use_tls,
+                        )
+
+                        await client.subscribe(self._settings.mqtt_topic_prefix)
+                        logger.info("Subscribed to MQTT topic: %s", self._settings.mqtt_topic_prefix)
+
+                        async for message in client.messages:
+                            if not self._running:
+                                break
+                            await self.handle_message(message)
+
+                except asyncio.CancelledError:
+                    logger.info("MQTT subscriber task cancelled.")
+                    break
+                except Exception as exc:
+                    self._is_connected = False
+                    self._metrics.set_mqtt_connected(False)
+                    self._client = None
+                    if not self._running:
+                        break
+                    logger.warning(
+                        "MQTT broker connection error (%s:%d): %s. Reconnecting in %.1fs...",
                         self._settings.mqtt_broker_host,
                         self._settings.mqtt_broker_port,
-                        self._settings.mqtt_use_tls,
+                        exc,
+                        backoff,
                     )
-
-                    await client.subscribe(self._settings.mqtt_topic_prefix)
-                    logger.info("Subscribed to MQTT topic: %s", self._settings.mqtt_topic_prefix)
-
-                    async for message in client.messages:
-                        if not self._running:
-                            break
-                        await self.handle_message(message)
-
-            except asyncio.CancelledError:
-                logger.info("MQTT subscriber task cancelled.")
-                break
-            except Exception as exc:
-                self._is_connected = False
-                self._metrics.set_mqtt_connected(False)
-                self._client = None
-                if not self._running:
-                    break
-                logger.warning(
-                    "MQTT broker connection error (%s:%d): %s. Reconnecting in %.1fs...",
-                    self._settings.mqtt_broker_host,
-                    self._settings.mqtt_broker_port,
-                    exc,
-                    backoff,
-                )
-                try:
-                    await asyncio.sleep(backoff)
-                except asyncio.CancelledError:
-                    break
-                backoff = min(backoff * 2, self._reconnect_max_interval)
-
-        self._is_connected = False
-        self._metrics.set_mqtt_connected(False)
-        self._client = None
-        logger.info("MQTT subscriber stopped.")
+                    try:
+                        await asyncio.sleep(backoff)
+                    except asyncio.CancelledError:
+                        break
+                    backoff = min(backoff * 2, self._reconnect_max_interval)
+                finally:
+                    self._is_connected = False
+                    self._metrics.set_mqtt_connected(False)
+                    if client_inst is not None:
+                        paho = getattr(client_inst, "_client", None)
+                        if paho is not None and hasattr(paho, "disconnect"):
+                            try:
+                                paho.disconnect()
+                            except Exception:
+                                pass
+                        misc = getattr(client_inst, "_misc_task", None)
+                        if misc is not None and not misc.done():
+                            misc.cancel()
+                            try:
+                                await asyncio.shield(misc)
+                            except (asyncio.CancelledError, Exception):
+                                pass
+                        if paho is not None and hasattr(paho, "_reset_sockets"):
+                            try:
+                                paho._reset_sockets()
+                            except Exception:
+                                pass
+                    self._client = None
+        finally:
+            self._running = False
+            self._is_connected = False
+            self._metrics.set_mqtt_connected(False)
+            self._client = None
+            logger.info("MQTT subscriber stopped.")
 
     async def stop(self) -> None:
         """Gracefully disconnect and stop the MQTT subscriber."""
+        self._stop_requested = True
         self._running = False
         self._is_connected = False
         self._metrics.set_mqtt_connected(False)
+        client = self._client
+        if client is not None:
+            paho = getattr(client, "_client", None)
+            if paho is not None and hasattr(paho, "disconnect"):
+                try:
+                    paho.disconnect()
+                except Exception:
+                    pass
+            misc = getattr(client, "_misc_task", None)
+            if misc is not None and not misc.done():
+                misc.cancel()
+                try:
+                    await asyncio.shield(misc)
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if paho is not None and hasattr(paho, "_reset_sockets"):
+                try:
+                    paho._reset_sockets()
+                except Exception:
+                    pass
+            self._client = None
         logger.info("MQTT subscriber stopping.")
 
     async def handle_message(self, message: Any) -> bool:

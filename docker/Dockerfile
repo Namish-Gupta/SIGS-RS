@@ -37,6 +37,11 @@ COPY --from=builder /install /usr/local
 
 # Copy application source
 COPY src/ ./src/
+COPY simulator/ ./simulator/
+
+# Ensure application and simulator modules are discoverable
+ENV PYTHONPATH="/app/src:/app"
+ENV PYTHONUNBUFFERED="1"
 
 # Copy TLS certificates if present (gitignored, mounted in prod)
 # COPY certs/ ./certs/
@@ -49,7 +54,7 @@ USER sigs
 EXPOSE 8000
 
 # Health check for Docker (K8s uses its own probes)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 # Default command — override in docker-compose.yml or K8s for HTTPS

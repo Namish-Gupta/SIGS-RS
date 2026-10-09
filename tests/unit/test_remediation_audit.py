@@ -201,35 +201,46 @@ class TestCircuitBreakerRemediation:
         await asyncio.sleep(0.05)
         app.state._mqtt_restarting = False
         
+        stop_hanging = False
         async def hanging_task():
             # Ignores cancellation and hangs longer than the 0.2s timeout
-            try:
-                await asyncio.sleep(1.0)
-            except asyncio.CancelledError:
-                await asyncio.sleep(1.0)
-                
+            while not stop_hanging:
+                try:
+                    await asyncio.sleep(0.05)
+                except asyncio.CancelledError:
+                    if stop_hanging:
+                        break
+                    await asyncio.sleep(0.05)
+
         hanging = loop.create_task(hanging_task())
         app.state.mqtt_task = hanging
         mqtt_mock.starts = 0
-        
+
         cb._reset()
         await asyncio.sleep(0.3)  # wait longer than timeout=0.2s
-        
+
         # Timeout occurred -> no replacement task created
         assert app.state.mqtt_task is hanging
         assert not hanging.done()
         assert mqtt_mock.starts == 0
         assert app.state._mqtt_restarting is False  # Guard reset correctly
-        
+
         # D. Shutdown -> no replacement MQTT task is created
         app.state.is_shutting_down = True
         app.state._mqtt_restarting = False
-        hanging.cancel()  # clean up hanging task
-        
+
         cb._reset()
         await asyncio.sleep(0.05)
         assert app.state.mqtt_task is hanging  # Remained unchanged
         assert app.state._mqtt_restarting is False
+
+        # Clean up hanging task
+        stop_hanging = True
+        hanging.cancel()
+        try:
+            await hanging
+        except asyncio.CancelledError:
+            pass
 
 
 # ─── 2. Unauthorized Access Audit Logging Tests ───────────────────────────────

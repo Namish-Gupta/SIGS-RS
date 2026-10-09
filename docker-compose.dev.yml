@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS Docker Compose — Development Overlay (Phase 12)
+#
+# Mounts local source code into the container and enables uvicorn auto-reload
+# for live developer iteration.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  gateway:
+    command: >
+      python -m uvicorn sigs_rs.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    volumes:
+      - ./src:/app/src
+      - ./simulator:/app/simulator
+    environment:
+      DEBUG: "true"
+      APP_ENV: development

@@ -12,120 +12,193 @@ pytestmark = pytest.mark.asyncio
 async def test_database_latency_circuit_breaker(client: AsyncClient, app: FastAPI):
     repo = app.state.repository
     original_insert = repo.insert
+    original_insert_batch = repo.insert_batch
 
     async def slow_insert(packet):
         await asyncio.sleep(2.1)
         return await original_insert(packet)
 
+    async def slow_insert_batch(packets):
+        await asyncio.sleep(2.1)
+        return await original_insert_batch(packets)
+
     repo.insert = slow_insert
+    repo.insert_batch = slow_insert_batch
 
-    payload = {
-        "sensor_id": "test-sensor",
-        "timestamp": "2026-10-06T20:00:00Z",
-        "resource_type": "water",
-        "value": 10.5,
-        "unit": "L/min",
-    }
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 202
-    await asyncio.sleep(2.5)
+    try:
+        payload = {
+            "sensor_id": "test-sensor",
+            "timestamp": "2026-10-06T20:00:00Z",
+            "resource_type": "water",
+            "value": 10.5,
+            "unit": "L/min",
+        }
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 202
 
-    assert app.state.circuit_breaker.is_open is True
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 503
-    assert app.state.mqtt.is_running is False
+        # Deterministically wait for background pipeline to process the slow write and trip the breaker
+        for _ in range(60):
+            if app.state.circuit_breaker.is_open:
+                break
+            await asyncio.sleep(0.1)
+
+        assert app.state.circuit_breaker.is_open is True
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 503
+        assert app.state.mqtt.is_running is False
+    finally:
+        repo.insert = original_insert
+        repo.insert_batch = original_insert_batch
+
+
+async def test_database_latency_threshold_circuit_breaker_deterministic():
+    """Verify directly that write duration > 2000 ms trips breaker, while <= 2000 ms does not."""
+    from sigs_rs.persistence.circuit_breaker import CircuitBreaker, CBState
+    from sigs_rs.common.exceptions import CircuitBreakerOpenError
+    from unittest.mock import patch
+
+    cb = CircuitBreaker(failure_threshold_ms=2000, cooldown_seconds=30)
+    assert cb.state == CBState.CLOSED
+
+    # 1. Operation under threshold (1900 ms) stays CLOSED
+    t_clock = 1000.0
+    def mock_time():
+        return t_clock
+
+    with patch("time.monotonic", side_effect=mock_time):
+        async def fast_op():
+            nonlocal t_clock
+            t_clock += 1.9
+        await cb.call(fast_op())
+    assert cb.state == CBState.CLOSED
+
+    # 2. Operation exceeding threshold (2001 ms) trips to OPEN
+    t_clock = 2000.0
+    with patch("time.monotonic", side_effect=mock_time):
+        async def slow_op():
+            nonlocal t_clock
+            t_clock += 2.001
+        with pytest.raises(CircuitBreakerOpenError, match="exceeds 2000ms threshold"):
+            await cb.call(slow_op())
+        assert cb.state == CBState.OPEN
+        assert cb.is_open is True
+
 
 async def test_anonymizer_catastrophic_failure_fails_closed(client: AsyncClient, app: FastAPI):
     anonymizer = app.state.anonymizer
-    
+    original_anonymize = anonymizer.anonymize
+
     def fake_anonymize(packet):
         raise RuntimeError("Catastrophic error")
-    
+
     anonymizer.anonymize = fake_anonymize
 
-    payload = {
-        "sensor_id": "test-sensor-2",
-        "timestamp": "2026-10-06T20:00:00Z",
-        "resource_type": "water",
-        "value": 10.5,
-        "unit": "L/min",
-    }
-    
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 202
-    await asyncio.sleep(0.5)
-    assert app.state.fail_closed is True
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 503
-    assert "FAIL-CLOSED" in resp.json()["detail"]
+    try:
+        payload = {
+            "sensor_id": "test-sensor-2",
+            "timestamp": "2026-10-06T20:00:00Z",
+            "resource_type": "water",
+            "value": 10.5,
+            "unit": "L/min",
+        }
+
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 202
+        for _ in range(30):
+            if app.state.fail_closed:
+                break
+            await asyncio.sleep(0.05)
+        assert app.state.fail_closed is True
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 503
+        assert "FAIL-CLOSED" in resp.json()["detail"]
+    finally:
+        anonymizer.anonymize = original_anonymize
+
 
 async def test_database_unavailable_circuit_breaker(client: AsyncClient, app: FastAPI):
     app.state.circuit_breaker._reset()
     app.state.fail_closed = False
-    
+
     repo = app.state.repository
+    original_insert = repo.insert
+    original_insert_batch = repo.insert_batch
+
     async def fail_insert(packet):
         raise RuntimeError("Database connection refused")
+
     repo.insert = fail_insert
+    repo.insert_batch = fail_insert
 
-    payload = {
-        "sensor_id": "test-sensor-3",
-        "timestamp": "2026-10-06T20:00:00Z",
-        "resource_type": "water",
-        "value": 10.5,
-        "unit": "L/min",
-    }
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 202
-    await asyncio.sleep(0.5)
+    try:
+        payload = {
+            "sensor_id": "test-sensor-3",
+            "timestamp": "2026-10-06T20:00:00Z",
+            "resource_type": "water",
+            "value": 10.5,
+            "unit": "L/min",
+        }
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 202
+        for _ in range(30):
+            if app.state.circuit_breaker.is_open:
+                break
+            await asyncio.sleep(0.05)
 
-    # Circuit breaker should have tripped, but pipeline NOT crashed.
-    assert app.state.circuit_breaker.is_open is True
-    assert app.state.fail_closed is False
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 503
+        # Circuit breaker should have tripped, but pipeline NOT crashed.
+        assert app.state.circuit_breaker.is_open is True
+        assert app.state.fail_closed is False
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 503
+    finally:
+        repo.insert = original_insert
+        repo.insert_batch = original_insert_batch
+
 
 async def test_queue_failure_backpressure(client: AsyncClient, app: FastAPI):
     app.state.circuit_breaker._reset()
     # Simulate queue full
     from sigs_rs.common.exceptions import QueueFullError
     original_put = app.state.queue.put
+
     async def fail_put(packet):
         raise QueueFullError("Queue full")
+
     app.state.queue.put = fail_put
 
-    payload = {
-        "sensor_id": "test-sensor-4",
-        "timestamp": "2026-10-06T20:00:00Z",
-        "resource_type": "water",
-        "value": 10.5,
-        "unit": "L/min",
-    }
-    resp = await client.post("/api/v1/telemetry", json=payload)
-    assert resp.status_code == 503
-    assert "queue is full" in resp.json()["detail"].lower()
+    try:
+        payload = {
+            "sensor_id": "test-sensor-4",
+            "timestamp": "2026-10-06T20:00:00Z",
+            "resource_type": "water",
+            "value": 10.5,
+            "unit": "L/min",
+        }
+        resp = await client.post("/api/v1/telemetry", json=payload)
+        assert resp.status_code == 503
+        assert "queue is full" in resp.json()["detail"].lower()
+    finally:
+        app.state.queue.put = original_put
+
 
 async def test_mqtt_failure_reconnects(client: AsyncClient, app: FastAPI):
     # Just verify the method handles exceptions gracefully
     mqtt = app.state.mqtt
-    mqtt._running = True
-    
-    # Check that when connection fails, is_connected becomes False
-    import aiomqtt
     original_client = mqtt._client
-    
-    class FakeClient:
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def connect(self): raise aiomqtt.MqttError("Connection lost")
-        
-    mqtt._client = FakeClient()
-    
-    # Simulate an exception in the running loop by directly testing the exception handler
-    # Or just verify that when we call stop(), it correctly disconnects
-    await mqtt.stop()
-    assert mqtt._is_connected is False
-    assert mqtt.is_running is False
+
+    try:
+        import aiomqtt
+        class FakeClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+            async def connect(self): raise aiomqtt.MqttError("Connection lost")
+
+        mqtt._client = FakeClient()
+        await mqtt.stop()
+        assert mqtt._is_connected is False
+        assert mqtt.is_running is False
+    finally:
+        mqtt._client = original_client
 
 async def test_process_restart_resets_state():
     from sigs_rs.main import create_app
@@ -251,6 +324,10 @@ async def test_mqtt_recovery_blocked_when_fail_closed_true(client: AsyncClient, 
     mqtt._running = False
     if getattr(app.state, "mqtt_task", None) and not app.state.mqtt_task.done():
         app.state.mqtt_task.cancel()
+        try:
+            await app.state.mqtt_task
+        except asyncio.CancelledError:
+            pass
 
     # Simulate CB recovery invoking _cb_close_handler
     from sigs_rs.main import _cb_close_handler
@@ -268,6 +345,10 @@ async def test_mqtt_recovery_works_when_fail_closed_false(client: AsyncClient, a
     mqtt._running = False
     if getattr(app.state, "mqtt_task", None) and not app.state.mqtt_task.done():
         app.state.mqtt_task.cancel()
+        try:
+            await app.state.mqtt_task
+        except asyncio.CancelledError:
+            pass
 
     from sigs_rs.main import _cb_close_handler
     _cb_close_handler(app)
@@ -275,8 +356,13 @@ async def test_mqtt_recovery_works_when_fail_closed_false(client: AsyncClient, a
 
     assert mqtt.is_running is True
     # Clean up the test task
-    if getattr(app.state, "mqtt_task", None):
+    if getattr(app.state, "mqtt_task", None) and not app.state.mqtt_task.done():
         app.state.mqtt_task.cancel()
+        try:
+            await app.state.mqtt_task
+        except asyncio.CancelledError:
+            pass
+    await mqtt.stop()
 
 async def test_mqtt_recovery_aborts_if_fail_closed_becomes_true_while_waiting(client: AsyncClient, app: FastAPI):
     app.state.circuit_breaker._reset()
@@ -292,21 +378,29 @@ async def test_mqtt_recovery_aborts_if_fail_closed_becomes_true_while_waiting(cl
     loop = asyncio.get_running_loop()
     app.state.mqtt_task = loop.create_task(slow_task())
 
-    # Start recovery
-    from sigs_rs.main import _cb_close_handler
-    _cb_close_handler(app)
-    
-    # Wait slightly so restart_mqtt gets to wait_for
-    await asyncio.sleep(0.1)
-    
-    # Simulate an anonymizer failure setting fail_closed during the wait
-    app.state.fail_closed = True
-    
-    # Wait for the slow_task and restart_mqtt to finish
-    await asyncio.sleep(0.6)
+    try:
+        # Start recovery
+        from sigs_rs.main import _cb_close_handler
+        _cb_close_handler(app)
 
-    assert mqtt.is_running is False
-    assert app.state._mqtt_restarting is False
+        # Wait slightly so restart_mqtt gets to wait_for
+        await asyncio.sleep(0.1)
+
+        # Simulate an anonymizer failure setting fail_closed during the wait
+        app.state.fail_closed = True
+
+        # Wait for the slow_task and restart_mqtt to finish
+        await asyncio.sleep(0.6)
+
+        assert mqtt.is_running is False
+        assert app.state._mqtt_restarting is False
+    finally:
+        if getattr(app.state, "mqtt_task", None) and not app.state.mqtt_task.done():
+            app.state.mqtt_task.cancel()
+            try:
+                await app.state.mqtt_task
+            except asyncio.CancelledError:
+                pass
 
 async def test_database_recovery_never_clears_fail_closed(client: AsyncClient, app: FastAPI):
     app.state.circuit_breaker._reset()

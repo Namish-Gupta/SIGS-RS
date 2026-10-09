@@ -78,17 +78,76 @@ uvicorn sigs_rs.main:app --reload --host 0.0.0.0 --port 8000
 
 Visit: http://localhost:8000/docs (OpenAPI UI)
 
-### 4. Run the full stack with Docker Compose
+### 4. Run the full stack with Docker Compose (Phase 12)
+
+A fresh clone can start the complete production-like stack with two commands:
 
 ```bash
-docker-compose up --build
+cp .env.example .env
+docker compose up -d --build
 ```
 
-This starts:
-- **sigs-rs** on port 8000
-- **Mosquitto** MQTT broker on port 1883 (TLS: 8883)
-- **TimescaleDB** on port 5432
+#### Services Started
 
+| Service | Container Name | Port(s) | Health Check | Description |
+|---|---|---|---|---|
+| **gateway** | `sigs-gateway` | `8000:8000` | HTTP `GET /health` | FastAPI ingestion gateway, API docs, and metrics |
+| **timescaledb** | `sigs-timescaledb` | `5432:5432` | `pg_isready` | PostgreSQL 16 + TimescaleDB with hypertable partitioning |
+| **mosquitto** | `sigs-mosquitto` | `1883:1883`, `8883:8883` | MQTT ping (`mosquitto_pub`) | Eclipse Mosquitto broker (plain & TLS) |
+| **simulator** | `sigs-simulator` | internal | Depends on gateway & broker | Virtual IoT sensor grid generating live telemetry |
+| **prometheus** | `sigs-prometheus` | `9090:9090` | HTTP `GET /-/healthy` | Prometheus server scraping gateway runtime `/metrics` |
+
+#### Verify System Operation
+
+```bash
+# 1. Check all container statuses and health states
+docker compose ps
+
+# 2. Verify gateway health and component readiness
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+
+# 3. View live Prometheus metrics scraped from the gateway
+curl http://localhost:8000/metrics
+
+# 4. View persisted telemetry in TimescaleDB
+docker exec sigs-timescaledb psql -U sigs_user -d sigs_db -c \
+  "SELECT COUNT(*), resource_type FROM telemetry.sanitized_readings GROUP BY resource_type;"
+
+# 5. Open monitoring dashboards in browser:
+#    - Gateway Swagger Docs: http://localhost:8000/docs
+#    - Prometheus Dashboard: http://localhost:9090
+```
+
+#### Development Mode (Live Code Reloading)
+
+To run with live host code volume mounting (`./src` and `./simulator`) and uvicorn auto-reload:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+#### Running Custom Simulator Traffic Profiles
+
+You can run targeted simulation workloads on-demand using the containerized simulator:
+
+```bash
+# Run a rate-attack simulation against the running gateway
+docker compose run --rm simulator python -m simulator --mode RATE_ATTACK --rate 50 --duration 10
+
+# Run a high-volume stress profile
+docker compose run --rm simulator python -m simulator --profile stress --duration 30
+```
+
+#### Stop and Teardown
+
+```bash
+# Stop all services
+docker compose down
+
+# Stop all services and wipe persistent database & broker volumes
+docker compose down -v
+```
 ---
 
 ## API Reference
@@ -253,16 +312,17 @@ sigs-rs/
 | Phase | Status | Description |
 |---|---|---|
 | **1** | ✅ Complete | Project skeleton, schemas, anonymizer, auth, health |
-| 2 | ⏳ Next | Database layer, TimescaleDB schema, migrations |
-| 3 | Pending | Full Inspector: sliding-window + impossible-value algorithms |
-| 4 | Pending | MQTT subscriber, pipeline wiring |
-| 5 | Pending | Circuit breaker implementation, fail-closed |
-| 6 | Pending | Full auth: user store, OAuth 2.0 |
-| 7 | Pending | Config API persistence, audit log queries |
-| 8 | Pending | Docker finalization, CI |
-| 9 | Pending | Load simulator full implementation |
-| 10 | Pending | Kubernetes manifests + HPA |
-| 11 | Pending | Documentation, final E2E validation |
+| **2** | ✅ Complete | Database layer, TimescaleDB schema, migrations |
+| **3** | ✅ Complete | Full Inspector: sliding-window + impossible-value algorithms |
+| **4** | ✅ Complete | MQTT subscriber, pipeline wiring |
+| **5** | ✅ Complete | Circuit breaker implementation, fail-closed |
+| **6** | ✅ Complete | Full auth: user store, OAuth 2.0 |
+| **7** | ✅ Complete | Config API persistence, audit log queries |
+| **8** | ✅ Complete | Docker finalization, CI |
+| **9** | ✅ Complete | Load simulator full implementation |
+| **10** | ✅ Complete | Observability, Prometheus metrics, structured logging |
+| **11** | ✅ Complete | Safety, circuit breaker recovery & fail-closed behavior |
+| **12** | ✅ Complete | Complete local Docker environment (Docker Compose, TimescaleDB, Mosquitto, Simulator, Prometheus) |
 
 ---
 

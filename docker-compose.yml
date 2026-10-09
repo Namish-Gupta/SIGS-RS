@@ -1,43 +1,38 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SIGS-RS Docker Compose — Full Local Stack
+# SIGS-RS Docker Compose — Production-like Local Stack (Phase 12)
 #
 # Services:
-#   sigs-rs      — The gateway application
-#   mosquitto    — Eclipse Mosquitto MQTT broker
-#   timescaledb  — PostgreSQL 16 + TimescaleDB extension
+#   timescaledb — PostgreSQL 16 + TimescaleDB time-series database
+#   mosquitto   — Eclipse Mosquitto MQTT broker (plaintext 1883 + TLS 8883)
+#   gateway     — SIGS-RS FastAPI ingestion gateway & security middleware
+#   simulator   — Virtual sensor grid IoT telemetry generator
+#   prometheus  — Prometheus metrics scraper (monitoring /metrics)
 #
 # SRS §2.4.1.2: Docker-based deployment.
-# SRS REQ-QA-3: identical execution across local and enterprise environments.
+# SRS REQ-QA-3: Identical execution across local and enterprise environments.
 # ─────────────────────────────────────────────────────────────────────────────
+
 services:
 
-  # ─── SIGS-RS Gateway Application ──────────────────────────────────────────
-  sigs-rs:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    container_name: sigs-rs
-    ports:
-      - "8000:8000"
+  # ─── PostgreSQL + TimescaleDB ─────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: sigs-timescaledb
     environment:
-      APP_ENV: development
-      DATABASE_URL: postgresql+asyncpg://sigs_user:sigs_pass@timescaledb:5432/sigs_db
-      DATABASE_SSL_MODE: disable
-      MQTT_BROKER_HOST: mosquitto
-      MQTT_BROKER_PORT: 1883
-      MQTT_USE_TLS: "false"
-      INSPECTOR_WINDOW_SECONDS: "10"
-      INSPECTOR_MAX_PACKETS_PER_WINDOW: "50"
-      JWT_SECRET_KEY: local-dev-secret-change-in-prod
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: changeme
-      ADMIN_ROLE: security_engineer
-      DEBUG: "true"
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      mosquitto:
-        condition: service_started
+      POSTGRES_DB: ${POSTGRES_DB:-sigs_db}
+      POSTGRES_USER: ${POSTGRES_USER:-sigs_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sigs_pass}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-sigs_user} -d $${POSTGRES_DB:-sigs_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
     networks:
       - sigs-net
@@ -49,43 +44,134 @@ services:
       dockerfile: Dockerfile.mosquitto
     container_name: sigs-mosquitto
     ports:
-      - "1883:1883"   # Plain MQTT (dev)
-      - "8883:8883"   # MQTTS (Phase 4)
+      - "${MQTT_PORT_PLAIN:-1883}:1883"   # Plain MQTT (dev/local)
+      - "${MQTT_PORT_TLS:-8883}:8883"     # MQTTS TLS (Phase 4)
     volumes:
       - mosquitto-data:/mosquitto/data
       - mosquitto-logs:/mosquitto/log
       - ./certs:/mosquitto/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t 'healthcheck/ping' -m 'ok' -q 0 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
     restart: unless-stopped
     networks:
       - sigs-net
 
-  # ─── PostgreSQL + TimescaleDB ─────────────────────────────────────────────
-  timescaledb:
-    image: timescale/timescaledb:latest-pg16
-    container_name: sigs-timescaledb
-    environment:
-      POSTGRES_DB: sigs_db
-      POSTGRES_USER: sigs_user
-      POSTGRES_PASSWORD: sigs_pass
+  # ─── SIGS-RS Gateway Application ──────────────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sigs-gateway
     ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql:ro
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-sigs_user}:${POSTGRES_PASSWORD:-sigs_pass}@timescaledb:5432/${POSTGRES_DB:-sigs_db}}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-disable}
+      ALLOWED_DB_HOSTS: ${ALLOWED_DB_HOSTS:-localhost,timescaledb,127.0.0.1}
+      MQTT_BROKER_HOST: ${DOCKER_MQTT_BROKER_HOST:-mosquitto}
+      MQTT_BROKER_PORT: ${DOCKER_MQTT_BROKER_PORT:-1883}
+      MQTT_USE_TLS: ${MQTT_USE_TLS:-false}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-telemetry/#}
+      MQTT_CLIENT_ID: sigs-rs-gateway
+      INSPECTOR_WINDOW_SECONDS: ${INSPECTOR_WINDOW_SECONDS:-10}
+      INSPECTOR_MAX_PACKETS_PER_WINDOW: ${INSPECTOR_MAX_PACKETS_PER_WINDOW:-50}
+      INSPECTOR_WINDOW_CLEANUP_INTERVAL: ${INSPECTOR_WINDOW_CLEANUP_INTERVAL:-60}
+      ANONYMIZER_PII_FIELDS: ${ANONYMIZER_PII_FIELDS:-latitude,longitude,lat,lon,mac_address,device_id,geo}
+      MAX_PAYLOAD_SIZE_BYTES: ${MAX_PAYLOAD_SIZE_BYTES:-524288}
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD_MS: ${CIRCUIT_BREAKER_FAILURE_THRESHOLD_MS:-2000}
+      CIRCUIT_BREAKER_COOLDOWN_SECONDS: ${CIRCUIT_BREAKER_COOLDOWN_SECONDS:-30}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-secret-change-in-prod}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ADMIN_ROLE: ${ADMIN_ROLE:-security_engineer}
+      DEBUG: ${DEBUG:-false}
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sigs_user -d sigs_db"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - sigs-net
+
+  # ─── Virtual Sensor Grid Simulator ────────────────────────────────────────
+  simulator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sigs-simulator
+    command: >
+      python -m simulator
+      --broker-host mosquitto
+      --broker-port 1883
+      --rate 5
+      --sensors 25
+      --duration 0
+      --mode NORMAL
+    environment:
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    networks:
+      - sigs-net
+
+  # ─── Prometheus Monitoring ────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sigs-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --tries=1 -O- http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
     networks:
       - sigs-net
 
 volumes:
   pgdata:
+    name: sigs_pgdata
   mosquitto-data:
+    name: sigs_mosquitto_data
   mosquitto-logs:
+    name: sigs_mosquitto_logs
+  promdata:
+    name: sigs_promdata
 
 networks:
   sigs-net:
+    name: sigs-net
     driver: bridge

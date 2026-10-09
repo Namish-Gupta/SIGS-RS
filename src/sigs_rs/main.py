@@ -180,7 +180,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Cancel background tasks
     current_mqtt_task = getattr(app.state, "mqtt_task", None)
-    for task in (pipeline_task, current_mqtt_task, cleanup_task):
+    if current_mqtt_task and not current_mqtt_task.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(current_mqtt_task), timeout=0.5)
+        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+            if not current_mqtt_task.done():
+                current_mqtt_task.cancel()
+                try:
+                    await current_mqtt_task
+                except asyncio.CancelledError:
+                    pass
+
+    for task in (pipeline_task, cleanup_task):
         if task and not task.done():
             task.cancel()
             try:
@@ -250,6 +261,7 @@ def _cb_close_handler(app: FastAPI) -> None:
             if getattr(app.state, "is_shutting_down", False):
                 return
 
+            mqtt._stop_requested = False
             mqtt._running = True
             loop = asyncio.get_running_loop()
             app.state.mqtt_task = loop.create_task(mqtt.start(), name="mqtt-subscriber")
