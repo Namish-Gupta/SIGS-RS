@@ -40,6 +40,13 @@ class TelemetryRepository:
     def __init__(self, db: "DatabasePool") -> None:
         self._db = db
 
+    async def probe_connection(self) -> None:
+        """
+        Execute a lightweight synthetic probe to validate database connectivity.
+        Used by the CircuitBreaker during HALF_OPEN recovery to avoid bypassing external telemetry.
+        """
+        await self._db.execute("SELECT 1")
+
     async def insert(self, record: SanitizedTelemetryPacket) -> None:
         """
         Persist a single sanitized telemetry record to TimescaleDB.

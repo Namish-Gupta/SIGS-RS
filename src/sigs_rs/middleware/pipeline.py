@@ -141,15 +141,23 @@ class MiddlewarePipeline:
                 if self._audit:
                     await self._audit.log(
                         AuditEvent.ANONYMIZER_FAIL_SECURE,
-                        severity="ERROR",
+                        severity="CRITICAL",
                         sensor_id=getattr(packet, "sensor_id", "<unknown>"),
                         detail={"reason": str(exc)},
                     )
-                logger.error(
-                    "Anonymization failed for sensor %s; packet dropped.",
+                logger.critical(
+                    "Catastrophic anonymization failure for sensor %s; FAILING CLOSED.",
                     getattr(packet, "sensor_id", "<unknown>"),
                 )
-                continue
+                # Fail closed: do not continue. Stop the routing path.
+                self._running = False
+
+                # Signal the rest of the application
+                import fastapi
+                for obj in [self._repo, self._inspector]: # Try to find app state
+                    pass # Not easy to get app from pipeline, let's just crash the pipeline.
+
+                raise RuntimeError(f"Fail-closed: Privacy Anonymizer failure: {exc}") from exc
             finally:
                 self._metrics.record_anonymizer_latency(time.monotonic() - anon_t0)
 
@@ -174,6 +182,9 @@ class MiddlewarePipeline:
                 "Circuit breaker open; %d sanitized packet(s) dropped.",
                 len(sanitized_batch),
             )
+            return False
+        except Exception as exc:
+            logger.error("Database persistence failed: %s", exc)
             return False
         finally:
             self._metrics.record_database_latency(time.monotonic() - db_t0)

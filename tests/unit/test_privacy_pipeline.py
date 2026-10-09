@@ -67,13 +67,14 @@ async def test_pipeline_drops_and_audits_anonymizer_failure_without_persisting_r
     repository.insert = AsyncMock()
     audit_logger = AsyncMock()
 
-    persisted = await _pipeline(inspector, anonymizer, repository, audit_logger).process_packet(_packet())
+    import pytest
+    with pytest.raises(RuntimeError, match="Fail-closed"):
+        await _pipeline(inspector, anonymizer, repository, audit_logger).process_packet(_packet())
 
-    assert persisted is False
     repository.insert.assert_not_awaited()
     audit_logger.log.assert_awaited_once()
     assert audit_logger.log.call_args.args[0] == AuditEvent.ANONYMIZER_FAIL_SECURE
-    assert audit_logger.log.call_args.kwargs["severity"] == "ERROR"
+    assert audit_logger.log.call_args.kwargs["severity"] == "CRITICAL"
     assert "unsafe payload structure" in audit_logger.log.call_args.kwargs["detail"]["reason"]
 
 

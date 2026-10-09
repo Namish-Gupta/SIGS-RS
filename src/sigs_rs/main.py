@@ -89,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         audit_logger=audit_logger,
         on_open_callback=lambda: _cb_open_handler(app),
         on_close_callback=lambda: _cb_close_handler(app),
+        probe_action=repository.probe_connection,
     )
 
     # ── Middleware ────────────────────────────────────────────────────────────
@@ -134,6 +135,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     import asyncio
     pipeline_task = asyncio.create_task(pipeline.run(), name="middleware-pipeline")
     app.state.mqtt_task = asyncio.create_task(mqtt.start(), name="mqtt-subscriber")
+
+    def _pipeline_died(task: asyncio.Task) -> None:
+        try:
+            exc = task.exception()
+            if exc:
+                logger.critical(f"Middleware pipeline CRASHED: {exc}. System entering FAIL CLOSED state.")
+                app.state.fail_closed = True
+                if hasattr(app.state, "mqtt"):
+                    app.state.mqtt._running = False
+        except asyncio.CancelledError:
+            pass
+
+    pipeline_task.add_done_callback(_pipeline_died)
 
     # ── Sliding-window cleanup task (Remediation 3) ───────────────────────────
     cleanup_interval = settings.inspector_window_cleanup_interval
@@ -195,6 +209,11 @@ def _cb_close_handler(app: FastAPI) -> None:
     Re-enable MQTT traffic acceptance via an asynchronous restart task to handle shutdown races.
     """
     logger.info("Circuit breaker CLOSED — re-enabling MQTT subscriber.")
+
+    if getattr(app.state, "fail_closed", False):
+        logger.warning("Circuit breaker CLOSED, but system is in FAIL-CLOSED state. MQTT will NOT be restarted.")
+        return
+
     if getattr(app.state, "is_shutting_down", False):
         return
 
@@ -223,6 +242,10 @@ def _cb_close_handler(app: FastAPI) -> None:
                 except Exception as exc:
                     logger.error("MQTT restart aborted: unexpected error waiting for old task: %s", exc)
                     return
+
+            if getattr(app.state, "fail_closed", False):
+                logger.warning("System entered FAIL-CLOSED state while waiting for MQTT restart. Restart aborted.")
+                return
 
             if getattr(app.state, "is_shutting_down", False):
                 return

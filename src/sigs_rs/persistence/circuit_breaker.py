@@ -51,6 +51,7 @@ class CircuitBreaker:
         audit_logger: "AuditLogger | None" = None,
         on_open_callback=None,
         on_close_callback=None,
+        probe_action=None,
     ) -> None:
         self.failure_threshold_ms = failure_threshold_ms
         self.cooldown_seconds = cooldown_seconds
@@ -59,6 +60,9 @@ class CircuitBreaker:
         self._opened_at: float | None = None
         self._on_open = on_open_callback
         self._on_close = on_close_callback
+        self._probe_action = probe_action
+        self._probe_in_flight = False
+        self._probe_task = None
 
     @property
     def state(self) -> CBState:
@@ -94,15 +98,26 @@ class CircuitBreaker:
                 coro.close()
             raise CircuitBreakerOpenError("Circuit breaker is OPEN — DB writes halted.")
 
+        if current == CBState.HALF_OPEN:
+            if self._probe_in_flight:
+                import inspect
+                if inspect.iscoroutine(coro):
+                    coro.close()
+                raise CircuitBreakerOpenError("Circuit breaker is HALF_OPEN and probe is already in-flight.")
+            self._probe_in_flight = True
+
         # CLOSED or HALF_OPEN: measure latency
         t0 = time.monotonic()
         try:
             await coro
         except Exception:
-            # DB error during HALF_OPEN probe → re-trip
-            if current == CBState.HALF_OPEN:
+            # DB error during CLOSED or HALF_OPEN → trip
+            if self._state in (CBState.CLOSED, CBState.HALF_OPEN):
                 self._trip()
             raise
+        finally:
+            if current == CBState.HALF_OPEN:
+                self._probe_in_flight = False
 
         elapsed_ms = (time.monotonic() - t0) * 1000
 
@@ -115,13 +130,14 @@ class CircuitBreaker:
             )
 
         # Write succeeded within threshold
-        if current == CBState.HALF_OPEN:
+        if self._state == CBState.HALF_OPEN:
             self._reset()
 
     def _trip(self) -> None:
         """Transition to OPEN state."""
         self._state = CBState.OPEN
         self._opened_at = time.monotonic()
+        self._probe_in_flight = False
         logger.critical("Circuit breaker OPENED — DB writes halted.")
 
         if self._on_open:
@@ -133,10 +149,34 @@ class CircuitBreaker:
         if self._audit:
             self._fire_audit("CIRCUIT_BREAKER_OPEN", "CRITICAL")
 
+        if self._probe_action:
+            try:
+                loop = asyncio.get_running_loop()
+                if self._probe_task and not self._probe_task.done():
+                    self._probe_task.cancel()
+                self._probe_task = loop.create_task(self._cooldown_and_probe())
+            except RuntimeError:
+                pass
+
+    async def _cooldown_and_probe(self) -> None:
+        try:
+            await asyncio.sleep(self.cooldown_seconds)
+            if self.state == CBState.HALF_OPEN:
+                try:
+                    await self.call(self._probe_action())
+                except Exception:
+                    # call() handles re-tripping the breaker on failure
+                    pass
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Error in synthetic probe task")
+
     def _reset(self) -> None:
         """Transition to CLOSED state."""
         self._state = CBState.CLOSED
         self._opened_at = None
+        self._probe_in_flight = False
         logger.info("Circuit breaker CLOSED — DB writes resumed.")
 
         if self._on_close:

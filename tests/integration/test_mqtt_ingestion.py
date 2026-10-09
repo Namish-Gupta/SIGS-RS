@@ -360,10 +360,12 @@ class TestMQTTSecurityGate:
 
         packet = await queue.get()
         with patch.object(pipeline._anonymizer, "anonymize", side_effect=AnonymizerError("Masking corrupted")):
-            persisted = await pipeline.process_packet(packet)
+            import pytest
+            with pytest.raises(RuntimeError, match="Fail-closed"):
+                await pipeline.process_packet(packet)
         queue.task_done()
 
-        assert persisted is False
+        # Database must be empty for this sensor
         assert await repository.count_readings("sensor-anon-fail") == 0
 
 

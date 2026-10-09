@@ -15,6 +15,7 @@ from sigs_rs.common.exceptions import (
 )
 from sigs_rs.config import Settings, get_settings
 from sigs_rs.observability.metrics import get_metrics
+from sigs_rs.common.exceptions import CircuitBreakerOpenError
 from sigs_rs.schemas import (
     BatchIngestRequest,
     BatchIngestResponse,
@@ -52,6 +53,19 @@ async def ingest_packet(
     metrics = getattr(request.app.state, "metrics", None) or get_metrics()
     metrics.record_packet_received()
 
+    if getattr(request.app.state, "fail_closed", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="System is in FAIL-CLOSED state due to a security middleware failure."
+        )
+
+    cb = getattr(request.app.state, "circuit_breaker", None)
+    if cb and cb.is_open:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable — circuit breaker open."
+        )
+
     try:
         await queue.put(payload)
         metrics.record_packet_valid()
@@ -79,6 +93,19 @@ async def ingest_batch(
     """Accept multiple telemetry packets in one request."""
     metrics = getattr(request.app.state, "metrics", None) or get_metrics()
     metrics.record_packet_received(count=len(body.packets))
+
+    if getattr(request.app.state, "fail_closed", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="System is in FAIL-CLOSED state due to a security middleware failure."
+        )
+
+    cb = getattr(request.app.state, "circuit_breaker", None)
+    if cb and cb.is_open:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable — circuit breaker open."
+        )
 
     accepted = 0
     rejected = 0

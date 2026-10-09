@@ -298,8 +298,9 @@ class TestPersistencePipelineIntegration:
             "anonymize",
             side_effect=AnonymizerError("Simulated masking engine corruption"),
         ):
-            persisted = await pipeline.process_packet(raw)
-            assert persisted is False
+            import pytest
+            with pytest.raises(RuntimeError, match="Fail-closed"):
+                await pipeline.process_packet(raw)
 
         # Database has NO readings
         assert await repo.count_readings("sensor-anonymizer-fail") == 0
@@ -312,7 +313,7 @@ class TestPersistencePipelineIntegration:
             and log["sensor_id"] == "sensor-anonymizer-fail"
         ]
         assert len(matching) == 1
-        assert matching[0]["severity"] == "ERROR"
+        assert matching[0]["severity"] == "CRITICAL"
         assert "Simulated masking engine corruption" in json.dumps(matching[0]["detail"])
 
 
