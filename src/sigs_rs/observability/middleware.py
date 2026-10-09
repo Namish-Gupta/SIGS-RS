@@ -35,7 +35,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         correlation_id = request.headers.get("X-Correlation-ID") or request.headers.get("X-Request-ID")
         if not correlation_id or len(correlation_id) > 64 or not re.fullmatch(r'^[A-Za-z0-9_-]+$', correlation_id):
             correlation_id = f"req-{uuid.uuid4().hex[:12]}"
-        
+
         token = set_correlation_id(correlation_id)
 
         start_time = time.monotonic()

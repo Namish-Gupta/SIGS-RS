@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS Redis (Local/Demo ONLY)
+#
+# WARNING: This is a single-replica Redis deployment intended ONLY for local
+# development and demonstration purposes. It lacks persistence, replication,
+# failover, and high availability.
+#
+# For production environments, DO NOT USE THIS MANIFEST. Instead, provision a
+# managed Redis service (e.g., AWS ElastiCache, GCP Memorystore) or deploy a
+# production-grade HA Redis cluster (e.g., Redis Sentinel/Cluster) and update
+# the REDIS_URL in sigs-rs-secret accordingly.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
+  selector:
+    app.kubernetes.io/name: redis

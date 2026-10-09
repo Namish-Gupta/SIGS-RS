@@ -1,0 +1,209 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS Eclipse Mosquitto MQTT Broker
+#
+# NOTE: This is a SINGLE-NODE broker suitable for local/demo/minikube use.
+# Mosquitto does not support clustering — see production notes at the bottom.
+#
+# SRS REQ-TI-1: MQTT telemetry ingestion transport.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Mosquitto ConfigMap ────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/component: mqtt-broker
+data:
+  mosquitto.conf: |
+    # ── Plaintext listener (development / minikube) ────────────────────────
+    # For production with mTLS, replace with the mqtts listener below.
+    listener 1883
+    allow_anonymous true
+
+    # ── MQTTS / mTLS listener (production) ────────────────────────────────
+    # Uncomment and configure cert paths to enable TLS (SRS REQ-TI-1).
+    # listener 8883
+    # require_certificate true
+    # cafile /mosquitto/certs/ca.crt
+    # certfile /mosquitto/certs/server.crt
+    # keyfile /mosquitto/certs/server.key
+    # tls_version tlsv1.2
+
+    # ── Persistence ────────────────────────────────────────────────────────
+    persistence true
+    persistence_location /mosquitto/data/
+
+    # ── Logging ────────────────────────────────────────────────────────────
+    log_dest stdout
+    log_type error
+    log_type warning
+    log_type notice
+    log_type information
+    connection_messages true
+
+    # ── Message size limit (mirrors SRS REQ-TI-3: 512 KB) ─────────────────
+    message_size_limit 524288
+
+    # ── Shared subscriptions ────────────────────────────────────────────────
+    # Required for multi-pod gateway deployment to prevent duplicate DB writes.
+    # When MQTT_TOPIC_PREFIX = "$share/sigs-rs/telemetry/#", Mosquitto delivers
+    # each message to exactly ONE subscriber in the group 'sigs-rs', regardless
+    # of how many gateway pods are subscribed.
+    # Requires Mosquitto 2.0+. Enable in gateway ConfigMap:
+    #   MQTT_TOPIC_PREFIX: "$share/sigs-rs/telemetry/#"
+    # No broker-side config change needed; shared subscriptions are client-driven.
+
+---
+# ── Mosquitto Service ──────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/component: mqtt-broker
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mosquitto
+  ports:
+    - name: mqtt
+      port: 1883
+      targetPort: 1883
+      protocol: TCP
+    - name: mqtts
+      port: 8883
+      targetPort: 8883
+      protocol: TCP
+
+---
+# ── Mosquitto Deployment ───────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/component: mqtt-broker
+spec:
+  # Single replica only — Mosquitto does not support horizontal clustering.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mosquitto
+
+  strategy:
+    # Recreate (not RollingUpdate) to prevent two brokers from running
+    # simultaneously and causing split-brain message delivery.
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mosquitto
+        app.kubernetes.io/component: mqtt-broker
+
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1883   # eclipse-mosquitto image uses UID 1883
+        runAsGroup: 1883
+        fsGroup: 1883
+
+      containers:
+        - name: mosquitto
+          image: eclipse-mosquitto:2.0
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: mqtt
+              containerPort: 1883
+            - name: mqtts
+              containerPort: 8883
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          readinessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: config
+              mountPath: /mosquitto/config
+              readOnly: true
+            - name: data
+              mountPath: /mosquitto/data
+            - name: log
+              mountPath: /mosquitto/log
+            # Uncomment for mTLS (production):
+            # - name: certs
+            #   mountPath: /mosquitto/certs
+            #   readOnly: true
+
+      volumes:
+        - name: config
+          configMap:
+            name: mosquitto-config
+        - name: data
+          emptyDir: {}   # Replace with a PVC for persistent message queue
+        - name: log
+          emptyDir: {}
+        # Uncomment for mTLS (production):
+        # - name: certs
+        #   secret:
+        #     secretName: mosquitto-tls
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTION NOTES — Mosquitto
+# ─────────────────────────────────────────────────────────────────────────────
+# Mosquitto is a single-process broker. It cannot horizontally scale.
+# For production high-availability MQTT, replace with a clustered broker:
+#
+# Option A — EMQX:
+#   https://www.emqx.io/docs/en/v5.0/deploy/cluster/
+#   Supports native Kubernetes clustering and shared subscriptions.
+#   EMQX Operator: https://github.com/emqx/emqx-operator
+#
+# Option B — HiveMQ:
+#   https://www.hivemq.com/products/mqtt-broker/
+#   Enterprise-grade clustered broker with K8s operator.
+#
+# Option C — Managed MQTT (RECOMMENDED for production):
+#   AWS IoT Core, Google Cloud IoT Core, Azure IoT Hub, or HiveMQ Cloud.
+#   No broker deployment required; connect gateway via mqtts://.
+#
+# TLS / mTLS:
+#   In production (SRS REQ-TI-1, REQ-SE-1), MQTT MUST use TLS 1.2+.
+#   Create a TLS secret and mount it at /mosquitto/certs/:
+#     kubectl create secret tls mosquitto-tls \
+#       --cert=certs/server.crt --key=certs/server.key \
+#       --namespace=sigs-rs
+#   Update the listener config above and set MQTT_USE_TLS=true in the gateway.
+# ─────────────────────────────────────────────────────────────────────────────

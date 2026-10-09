@@ -107,7 +107,7 @@ def _redact_sensitive_fallback(text: str) -> str:
     text = _BEARER_REGEX.sub('[REDACTED]', text)
     text = _JWT_REGEX.sub('[REDACTED]', text)
     text = _MAC_REGEX.sub('[REDACTED]', text)
-    
+
     result = []
     idx = 0
     while idx < len(text):
@@ -115,19 +115,19 @@ def _redact_sensitive_fallback(text: str) -> str:
         if not match:
             result.append(text[idx:])
             break
-            
+
         result.append(text[idx:match.end()])
-        
+
         val_start = match.end()
         val_end = val_start
-        
+
         while val_end < len(text) and text[val_end].isspace():
             val_end += 1
-            
+
         if val_end >= len(text):
             result.append("[REDACTED]")
             break
-            
+
         char = text[val_end]
         if char in ('"', "'"):
             quote = char
@@ -180,7 +180,7 @@ def _redact_sensitive_fallback(text: str) -> str:
                 if c in (',', '}', ']', '\n', '&'):
                     break
                 val_end += 1
-                
+
         result.append("[REDACTED]")
         idx = val_end
 

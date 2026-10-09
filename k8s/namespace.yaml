@@ -1,0 +1,13 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS Kubernetes Namespace
+#
+# All SIGS-RS resources are isolated in the 'sigs-rs' namespace.
+# This prevents resource leakage into default and provides RBAC scope.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sigs-rs
+  labels:
+    app.kubernetes.io/name: sigs-rs
+    app.kubernetes.io/managed-by: kubectl

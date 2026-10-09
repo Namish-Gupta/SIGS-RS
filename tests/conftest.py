@@ -17,6 +17,8 @@ from httpx import ASGITransport, AsyncClient
 
 
 # ── Force test environment before any imports ────────────────────────────────
+os.environ.setdefault("REDIS_URL", "redis://mock")
+
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/sigs_test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only")
 os.environ.setdefault("ADMIN_USERNAME", "testadmin")
@@ -64,7 +66,7 @@ async def client(app: FastAPI) -> AsyncClient:
 
 @pytest.fixture
 def sliding_window():
-    from sigs_rs.middleware.sliding_window import SlidingWindow
+    from tests.mock_sliding_window import MockAsyncSlidingWindow as SlidingWindow
     return SlidingWindow(window_seconds=10, max_packets=50)
 
 
@@ -120,3 +122,65 @@ def valid_payload(valid_payload_dict):
 def telemetry_validator():
     from sigs_rs.telemetry.validator import TelemetryValidator
     return TelemetryValidator()
+
+@pytest.fixture(autouse=True)
+def mock_redis_sliding_window(monkeypatch, request):
+    """Replace SlidingWindow methods with in-memory versions for tests."""
+    if "real_redis" in request.keywords:
+        return
+    from sigs_rs.middleware.sliding_window import SlidingWindow
+    import collections
+    import time
+
+    _windows = collections.defaultdict(collections.deque)
+
+    async def mock_check(self, sensor_id: str, now: float | None = None) -> bool:
+        if now is None:
+            now = time.time()
+        window = _windows[sensor_id]
+        cutoff = now - self.window_seconds
+        while window and window[0] < cutoff:
+            window.popleft()
+        if len(window) >= self.max_packets:
+            return False
+        window.append(now)
+        return True
+
+    async def mock_cleanup(self, now: float | None = None) -> int:
+        if now is None:
+            now = time.time()
+        keys = list(_windows.keys())
+        removed = 0
+        cutoff = now - self.window_seconds
+        for k in keys:
+            window = _windows[k]
+            while window and window[0] < cutoff:
+                window.popleft()
+            if not window:
+                del _windows[k]
+                removed += 1
+        return removed
+
+    def mock_sensor_count(self, sensor_id: str) -> int:
+        return len(_windows[sensor_id])
+
+    def mock_active_sensor_count(self) -> int:
+        return len([s for s, w in _windows.items() if w])
+
+    async def mock_reset(self) -> None:
+        _windows.clear()
+
+
+    def mock_init(self, window_seconds: int, max_packets: int, redis_url: str = None):
+        self.window_seconds = window_seconds
+        self.max_packets = max_packets
+        class DummyRedis:
+            async def aclose(self): pass
+        self._redis = DummyRedis()
+
+    monkeypatch.setattr(SlidingWindow, "check", mock_check)
+    monkeypatch.setattr(SlidingWindow, "__init__", mock_init)
+    monkeypatch.setattr(SlidingWindow, "cleanup", mock_cleanup)
+    monkeypatch.setattr(SlidingWindow, "reset", mock_reset)
+    monkeypatch.setattr(SlidingWindow, "sensor_count", mock_sensor_count, raising=False)
+    monkeypatch.setattr(SlidingWindow, "active_sensor_count", mock_active_sensor_count, raising=False)

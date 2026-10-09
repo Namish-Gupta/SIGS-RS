@@ -82,16 +82,16 @@ class TelemetryGenerator:
         for i in range(self._sensor_count):
             resource = self._resource_types[i % len(self._resource_types)]
             base_coords = RESOURCE_COORDINATES[resource]
-            
+
             # Small jitter for geographic dispersion (±0.05 degrees ~ 5km)
             lat = base_coords["lat"] + self._rng.uniform(-0.05, 0.05)
             lon = base_coords["lon"] + self._rng.uniform(-0.05, 0.05)
-            
+
             # Realistic MAC address
             mac = ":".join(f"{self._rng.randint(0, 255):02X}" for _ in range(6))
             firmware = f"{self._rng.randint(1, 3)}.{self._rng.randint(0, 5)}.{self._rng.randint(0, 9)}"
             battery = self._rng.randint(65, 100)
-            
+
             if resource == "water":
                 base_val = self._rng.uniform(15.0, 60.0)
             elif resource == "energy":

@@ -40,7 +40,7 @@ from sigs_rs.middleware.anonymizer import PrivacyAnonymizer, _find_keys
 from sigs_rs.middleware.inspector import AnomalousPacketInspector, VerificationResult
 from sigs_rs.middleware.payload_validator import PayloadValidator
 from sigs_rs.middleware.pipeline import MiddlewarePipeline
-from sigs_rs.middleware.sliding_window import SlidingWindow
+from tests.mock_sliding_window import MockAsyncSlidingWindow as SlidingWindow
 from sigs_rs.persistence.circuit_breaker import CircuitBreaker
 from sigs_rs.persistence.database import InMemoryDatabasePool
 from sigs_rs.persistence.repository import TelemetryRepository

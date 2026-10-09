@@ -122,7 +122,7 @@ class MiddlewarePipeline:
 
             # 1. Inspector
             insp_t0 = time.monotonic()
-            insp_res = self._inspector.inspect(packet)
+            insp_res = await self._inspector.inspect(packet)
             self._metrics.record_inspector_latency(time.monotonic() - insp_t0)
 
             if insp_res is not VerificationResult.VERIFIED:

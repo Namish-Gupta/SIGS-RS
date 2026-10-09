@@ -25,7 +25,7 @@ from sigs_rs.common.exceptions import (
     PayloadTooLargeError,
 )
 from sigs_rs.middleware.payload_validator import PayloadValidator
-from sigs_rs.middleware.sliding_window import SlidingWindow
+from tests.mock_sliding_window import MockAsyncSlidingWindow as SlidingWindow
 from sigs_rs.telemetry.models import RawTelemetryPacket
 from sigs_rs.telemetry.validator import TelemetryValidator
 
@@ -203,7 +203,7 @@ class TestTrafficModes:
         accepted = 0
         dropped = 0
         for _ in range(60):
-            if window.check(attack_sensor_id):
+            if await window.check(attack_sensor_id):
                 accepted += 1
             else:
                 dropped += 1

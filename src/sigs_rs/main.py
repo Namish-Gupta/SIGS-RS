@@ -96,6 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     window = SlidingWindow(
         window_seconds=settings.inspector_window_seconds,
         max_packets=settings.inspector_max_packets_per_window,
+        redis_url=settings.redis_url,
     )
     validator = PayloadValidator()
     inspector = AnomalousPacketInspector(window, validator, audit_logger)
@@ -157,7 +158,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             while True:
                 await asyncio.sleep(cleanup_interval)
-                removed = window.cleanup()
+                removed = await window.cleanup()
                 if removed:
                     logger.debug("Sliding-window cleanup: removed %d stale sensor(s).", removed)
         except asyncio.CancelledError:
@@ -200,6 +201,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pass
 
     await audit_logger.log(AuditEvent.SYSTEM_SHUTDOWN)
+    inspector = getattr(app.state, "inspector", None)
+    if inspector and hasattr(inspector, "_window") and hasattr(inspector._window, "close"):
+        await inspector._window.close()
     await db.disconnect()
     logger.info("SIGS-RS shutdown complete.")
 

@@ -1,0 +1,257 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS TimescaleDB StatefulSet
+#
+# NOTE: This is a SINGLE-NODE deployment suitable for local/demo/minikube use.
+# It is NOT production-grade. See production notes at the bottom of this file.
+#
+# SRS REQ-PA-3: PostgreSQL/TimescaleDB-compatible schema.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Headless Service (required by StatefulSet for stable DNS) ──────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: database
+spec:
+  # ClusterIP: None makes it headless — pods get stable DNS names.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: timescaledb
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+
+---
+# ── StatefulSet ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: database
+spec:
+  serviceName: timescaledb
+  replicas: 1   # Single-node — see production notes below
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: timescaledb
+        app.kubernetes.io/component: database
+
+    spec:
+      securityContext:
+        fsGroup: 999   # postgres GID
+
+      containers:
+        - name: timescaledb
+          image: timescale/timescaledb:latest-pg16
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+
+          env:
+            - name: POSTGRES_DB
+              value: "sigs_db"
+            - name: POSTGRES_USER
+              value: "sigs_user"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sigs-rs-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+
+          # ── Readiness probe ──────────────────────────────────────────────
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U sigs_user -d sigs_db"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 5
+            timeoutSeconds: 5
+
+          # ── Liveness probe ───────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U sigs_user -d sigs_db"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+
+      volumes:
+        - name: init-sql
+          configMap:
+            name: sigs-rs-db-init
+
+  # ── PersistentVolumeClaim template ────────────────────────────────────────
+  # Each StatefulSet replica gets its own PVC (1 replica = 1 PVC).
+  # minikube uses the 'standard' StorageClass (hostPath provisioner).
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+        # Leave storageClassName unset to use the cluster default.
+        # For minikube: 'standard' (hostPath).
+        # For production: use a cloud-provider class (e.g. 'gp3', 'pd-ssd').
+        # storageClassName: standard
+
+---
+# ── DB Init SQL ConfigMap ──────────────────────────────────────────────────
+# Embeds docker/init-db.sql so it can be mounted into the container.
+# If the file changes, delete and re-create this ConfigMap and the pod.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigs-rs-db-init
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: database
+data:
+  01-init-db.sql: |
+    -- Enable TimescaleDB extension
+    CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
+    -- Schemas
+    CREATE SCHEMA IF NOT EXISTS telemetry;
+    CREATE SCHEMA IF NOT EXISTS audit;
+    CREATE SCHEMA IF NOT EXISTS config;
+
+    -- Telemetry table (sanitized data only — NO PII, SRS REQ-PA-1)
+    CREATE TABLE IF NOT EXISTS telemetry.sanitized_readings (
+        id              BIGSERIAL,
+        ts              TIMESTAMPTZ      NOT NULL,
+        ingested_at     TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+        sensor_id       VARCHAR(64)      NOT NULL,
+        resource_type   VARCHAR(32)      NOT NULL,
+        value           DOUBLE PRECISION NOT NULL,
+        unit            VARCHAR(32)      NOT NULL,
+        metadata        JSONB,
+        water_ext       JSONB,
+        energy_ext      JSONB,
+        air_quality_ext JSONB,
+        PRIMARY KEY (id, ts)
+    );
+
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+            PERFORM create_hypertable(
+                'telemetry.sanitized_readings',
+                'ts',
+                if_not_exists => TRUE,
+                chunk_time_interval => INTERVAL '1 day'
+            );
+        END IF;
+    EXCEPTION
+        WHEN others THEN
+            RAISE NOTICE 'Could not create hypertable: %', SQLERRM;
+    END $$;
+
+    CREATE INDEX IF NOT EXISTS idx_sanitized_sensor_ts
+        ON telemetry.sanitized_readings (sensor_id, ts DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_sanitized_resource_ts
+        ON telemetry.sanitized_readings (resource_type, ts DESC);
+
+    -- Audit log (immutable, SRS REQ-SE-4)
+    CREATE TABLE IF NOT EXISTS audit.security_log (
+        id          BIGSERIAL        PRIMARY KEY,
+        ts          TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+        event_type  VARCHAR(64)      NOT NULL,
+        severity    VARCHAR(16)      NOT NULL DEFAULT 'INFO',
+        sensor_id   VARCHAR(64),
+        user_id     VARCHAR(128),
+        detail      JSONB            NOT NULL DEFAULT '{}',
+        ip_address  VARCHAR(45)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_ts
+        ON audit.security_log (ts DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_event_type
+        ON audit.security_log (event_type);
+    CREATE INDEX IF NOT EXISTS idx_audit_sensor_id
+        ON audit.security_log (sensor_id);
+
+    -- Configuration table
+    CREATE TABLE IF NOT EXISTS config.middleware_settings (
+        key         VARCHAR(128) PRIMARY KEY,
+        value       JSONB        NOT NULL,
+        updated_by  VARCHAR(128) NOT NULL,
+        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    );
+
+    INSERT INTO config.middleware_settings (key, value, updated_by)
+    VALUES
+        ('inspector.window_seconds', '10'::jsonb, 'system'),
+        ('inspector.max_packets_per_window', '10'::jsonb, 'system'),
+        ('inspector.impossible_values', '{"energy_min": 0.0, "water_min": 0.0, "aqi_min": 0.0, "aqi_max": 500.0}'::jsonb, 'system'),
+        ('anonymizer.pii_fields', '["latitude", "longitude", "lat", "lon", "mac_address", "device_id", "geo"]'::jsonb, 'system')
+    ON CONFLICT (key) DO NOTHING;
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTION NOTES — TimescaleDB
+# ─────────────────────────────────────────────────────────────────────────────
+# This single-node StatefulSet is for local/demo use ONLY.
+#
+# For production, use ONE of the following:
+#
+# Option A — Managed cloud service (RECOMMENDED):
+#   Use Amazon RDS for PostgreSQL, Google Cloud SQL, Azure Database for
+#   PostgreSQL, or Timescale Cloud.  Delete this StatefulSet entirely and
+#   update DATABASE_URL in the Secret.
+#
+# Option B — TimescaleDB Kubernetes Operator (self-hosted HA):
+#   https://github.com/timescale/timescaledb-kubernetes
+#   Provides streaming replication, failover, and backup.
+#
+# Option C — CloudNativePG operator:
+#   https://cloudnative-pg.io/
+#   General-purpose PostgreSQL HA operator, TimescaleDB-compatible.
+#
+# Storage requirements:
+#   - The PVC provisioner must support ReadWriteOnce (most cloud classes do).
+#   - For multi-zone HA, use a storage class that supports cross-zone replication.
+#   - Minimum recommended production storage: 50 Gi with automated backup.
+# ─────────────────────────────────────────────────────────────────────────────

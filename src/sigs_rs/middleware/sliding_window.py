@@ -5,116 +5,109 @@ SRS REQ-API-1: track timestamps of all packets per sensor ID over a
                rolling 10-second window.
 SRS REQ-API-2: drop packets if sensor exceeds 50 packets per window.
 
-Data structure: dict[sensor_id, deque[timestamp_float]]
-  - O(1) amortized per check (deque popleft + append)
-  - ~4 MB total RAM for 10,000 sensors × 50 timestamps (well under 24 GB limit)
+Data structure: Redis Sorted Set
+  - Key: `sigs:ratelimit:{sensor_id}`
+  - Score: timestamp
+  - Value: timestamp + unique_id
 
 Concurrency model:
-  The window is designed for single-threaded asyncio (one event loop, one
-  call at a time).  time.monotonic() is used for timestamps to avoid
-  system-clock jumps (NTP, DST, leap-seconds).  For future multi-worker
-  deployment, each worker gets its own SlidingWindow instance — the
-  aggregate rate limit is effectively max_packets × N_workers, which is
-  acceptable per the SRS's stated single-process deployment model.
-
-Injecting `now` via parameter supports deterministic testing: tests can
-advance virtual time without sleeping.
+  Uses a Redis Lua script to atomically remove expired packets, check the limit,
+  and insert the new packet. Ensures global rate-limiting across all gateway pods.
 """
 from __future__ import annotations
 
 import time
-from collections import defaultdict, deque
+import logging
+import uuid
+from redis.asyncio import Redis, RedisError
 
+logger = logging.getLogger(__name__)
+
+LUA_RATE_LIMIT = """
+local key = KEYS[1]
+local max_packets = tonumber(ARGV[1])
+local window_seconds = tonumber(ARGV[2])
+local unique_id = ARGV[3]
+local passed_now = tonumber(ARGV[4])
+
+local now
+if passed_now and passed_now > 0 then
+    now = passed_now
+else
+    local time_res = redis.call('TIME')
+    now = tonumber(time_res[1]) + (tonumber(time_res[2]) / 1000000.0)
+end
+
+local cutoff = now - window_seconds
+
+redis.call('ZREMRANGEBYSCORE', key, '-inf', cutoff)
+local count = redis.call('ZCARD', key)
+
+if count >= max_packets then
+    return 0
+end
+
+local member = tostring(now) .. "-" .. unique_id
+redis.call('ZADD', key, now, member)
+-- Retain the key for the duration of the window to avoid memory leaks
+redis.call('PEXPIRE', key, window_seconds * 1000 + 1000)
+return 1
+"""
 
 class SlidingWindow:
     """
-    Per-sensor rolling timestamp window.
-
-    Each sensor ID maps to a deque of float timestamps (monotonic seconds).
-    On each check():
-      1. Evict entries older than (now - window_seconds)
-      2. If count >= max_packets → rate exceeded → return False
-      3. Else append current timestamp → return True
-
-    The deque is always sorted (timestamps are appended in order), so
-    eviction from the left is O(k) where k is the number of expired
-    entries — amortized O(1) per call since each entry is evicted at
-    most once.
+    Per-sensor rolling timestamp window using Redis.
     """
 
-    __slots__ = ("window_seconds", "max_packets", "_windows")
-
-    def __init__(self, window_seconds: int, max_packets: int) -> None:
+    def __init__(self, window_seconds: int, max_packets: int, redis_url: str) -> None:
         if window_seconds <= 0:
             raise ValueError(f"window_seconds must be positive, got {window_seconds}")
         if max_packets <= 0:
             raise ValueError(f"max_packets must be positive, got {max_packets}")
+        if not redis_url:
+            raise ValueError("redis_url must be provided for shared rate limiting.")
+
         self.window_seconds = window_seconds
         self.max_packets = max_packets
-        self._windows: dict[str, deque[float]] = defaultdict(deque)
+        self._redis = Redis.from_url(redis_url, decode_responses=True, socket_timeout=2.0)
+        self._script = self._redis.register_script(LUA_RATE_LIMIT)
 
-    def check(self, sensor_id: str, now: float | None = None) -> bool:
+    async def check(self, sensor_id: str, now: float | None = None) -> bool:
         """
         Check whether the sensor is within the allowed rate and, if so,
         record the current timestamp.
-
-        Args:
-            sensor_id: Unique identifier of the originating sensor.
-            now: Current time as a monotonic float.  Defaults to
-                 time.monotonic().  Inject a specific value for testing.
-
-        Returns:
-            True  → packet is within rate limit (allowed).
-            False → packet exceeds rate limit (must be dropped).
         """
-        if now is None:
-            now = time.monotonic()
+        key = f"sigs:ratelimit:{sensor_id}"
+        unique_id = uuid.uuid4().hex
+        passed_now = now if now is not None else 0.0
 
-        window = self._windows[sensor_id]
-        cutoff = now - self.window_seconds
+        try:
+            result = await self._script(
+                keys=[key],
+                args=[self.max_packets, self.window_seconds, unique_id, passed_now]
+            )
+            return bool(result)
+        except RedisError as exc:
+            logger.critical("Redis error during rate limit check: %s. Failing closed.", exc)
+            # Fail closed as required
+            raise RuntimeError(f"Fail-closed: Shared rate limit state unavailable: {exc}") from exc
 
-        # 1. Evict expired entries from the left of the deque.
-        #    Because timestamps are appended in monotonic order, once we
-        #    find one that is >= cutoff the rest are also valid.
-        while window and window[0] < cutoff:
-            window.popleft()
-
-        # 2. Check count BEFORE appending the new timestamp.
-        if len(window) >= self.max_packets:
-            return False
-
-        # 3. Record this packet's timestamp.
-        window.append(now)
-        return True
-
-    def sensor_count(self, sensor_id: str) -> int:
-        """Return the number of (possibly expired) timestamps stored for this sensor."""
-        return len(self._windows.get(sensor_id, deque()))
-
-    def active_sensor_count(self) -> int:
-        """Return the number of sensors with at least one stored timestamp."""
-        return sum(1 for d in self._windows.values() if d)
-
-    def cleanup(self, now: float | None = None) -> int:
+    async def cleanup(self, now: float | None = None) -> int:
         """
-        Remove entries for sensors whose entire window has expired.
-        Called periodically by a background asyncio task.
-
-        Returns the number of sensor entries removed.
+        Redis EXPIRE handles cleanup automatically.
         """
-        if now is None:
-            now = time.monotonic()
-        cutoff = now - self.window_seconds
+        return 0
 
-        # Collect sensor IDs whose most-recent timestamp is before the cutoff.
-        stale = [
-            sid for sid, dq in self._windows.items()
-            if not dq or dq[-1] < cutoff
-        ]
-        for sid in stale:
-            del self._windows[sid]
-        return len(stale)
+    async def reset(self) -> None:
+        """Clear all tracked state. Useful for tests."""
+        try:
+            keys = await self._redis.keys("sigs:ratelimit:*")
+            if keys:
+                await self._redis.delete(*keys)
+        except RedisError:
+            pass
 
-    def reset(self) -> None:
-        """Clear all tracked state.  Useful for tests."""
-        self._windows.clear()
+    async def close(self) -> None:
+        """Close the Redis connection pool."""
+        if hasattr(self, '_redis') and self._redis:
+            await self._redis.aclose()

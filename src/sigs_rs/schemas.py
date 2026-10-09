@@ -152,4 +152,3 @@ class MiddlewareStatusResponse(BaseModel):
     circuit_breaker: dict[str, Any]
     pipeline: dict[str, Any]
     queue: dict[str, Any]
-

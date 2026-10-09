@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS PodDisruptionBudget
+#
+# Ensure at least 1 gateway pod remains available during:
+#   - Node drains (kubectl drain)
+#   - Cluster upgrades
+#   - Rolling deployments
+#
+# Without a PDB, draining a node while HPA is at minReplicas=2 could
+# briefly leave 0 healthy gateway pods.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sigs-rs-gateway-pdb
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: sigs-rs
+    app.kubernetes.io/component: gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sigs-rs
+      app.kubernetes.io/component: gateway

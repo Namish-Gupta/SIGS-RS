@@ -323,6 +323,148 @@ sigs-rs/
 | **10** | ✅ Complete | Observability, Prometheus metrics, structured logging |
 | **11** | ✅ Complete | Safety, circuit breaker recovery & fail-closed behavior |
 | **12** | ✅ Complete | Complete local Docker environment (Docker Compose, TimescaleDB, Mosquitto, Simulator, Prometheus) |
+| **13** | ✅ Complete | Kubernetes deployment manifests, HPA, probes, PDB |
+
+---
+
+## Phase 13 — Kubernetes Deployment
+
+Manifests live in [`k8s/`](k8s/).
+
+| File | Contents |
+|---|---|
+| [`namespace.yaml`](k8s/namespace.yaml) | `sigs-rs` namespace |
+| [`configmap.yaml`](k8s/configmap.yaml) | All non-secret configuration |
+| [`secret-template.yaml`](k8s/secret-template.yaml) | Secret template — **fill before applying** |
+| [`deployment.yaml`](k8s/deployment.yaml) | Gateway Deployment with readiness/liveness/startup probes |
+| [`service.yaml`](k8s/service.yaml) | ClusterIP Service for the gateway |
+| [`hpa.yaml`](k8s/hpa.yaml) | HorizontalPodAutoscaler (75% CPU, ~2 min stabilization) |
+| [`timescaledb.yaml`](k8s/timescaledb.yaml) | Single-node TimescaleDB StatefulSet + PVC |
+| [`mosquitto.yaml`](k8s/mosquitto.yaml) | Mosquitto Deployment, ConfigMap, and Service |
+| [`pdb.yaml`](k8s/pdb.yaml) | PodDisruptionBudget (minAvailable: 1) |
+| [`kustomization.yaml`](k8s/kustomization.yaml) | Kustomize entry point |
+
+
+
+### Quickstart — minikube
+
+```bash
+# 1. Install minikube
+#    https://minikube.sigs.k8s.io/docs/start/
+
+# 2. Start a cluster
+minikube start --cpus=4 --memory=6144
+
+# 3. Enable required add-ons
+minikube addons enable metrics-server   # required by HPA
+minikube addons enable ingress          # optional: expose gateway externally
+
+# 4. Build the gateway image inside minikube's Docker daemon
+eval $(minikube docker-env)
+docker build -f docker/Dockerfile -t sigs-rs-gateway:1.0.0 .
+
+# 5. Create the namespace
+kubectl apply -f k8s/namespace.yaml
+
+# 6. Create real secrets (NEVER commit real values to git)
+kubectl create secret generic sigs-rs-secret \
+  --namespace=sigs-rs \
+  --from-literal=DATABASE_URL="postgresql+asyncpg://sigs_user:YOURPASSWORD@timescaledb:5432/sigs_db" \
+  --from-literal=POSTGRES_PASSWORD="YOURPASSWORD" \
+  --from-literal=JWT_SECRET_KEY="$(openssl rand -hex 64)" \
+  --from-literal=ADMIN_USERNAME="admin" \
+  --from-literal=ADMIN_PASSWORD="$(openssl rand -hex 16)"
+
+# 7. Apply remaining manifests (skip secret-template.yaml — real secret already applied)
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/timescaledb.yaml
+kubectl apply -f k8s/mosquitto.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/hpa.yaml
+kubectl apply -f k8s/pdb.yaml
+
+# 8. Wait for all pods to be ready
+kubectl rollout status deployment/sigs-rs-gateway -n sigs-rs
+kubectl get pods -n sigs-rs
+
+# 9. Access the gateway
+minikube service sigs-rs-gateway -n sigs-rs --url
+# Or port-forward:
+kubectl port-forward svc/sigs-rs-gateway 8080:80 -n sigs-rs &
+curl http://localhost:8080/health
+curl http://localhost:8080/metrics
+```
+
+### Quickstart — kind
+
+```bash
+# 1. Create a cluster
+kind create cluster --name sigs-rs
+
+# 2. Load the gateway image into kind
+docker build -f docker/Dockerfile -t sigs-rs-gateway:1.0.0 .
+kind load docker-image sigs-rs-gateway:1.0.0 --name sigs-rs
+
+# 3. Follow steps 5–9 from the minikube instructions above.
+
+# 4. Port-forward (kind has no minikube tunnel):
+kubectl port-forward svc/sigs-rs-gateway 8080:80 -n sigs-rs &
+curl http://localhost:8080/health
+```
+
+### HPA Verification
+
+```bash
+# Watch HPA decisions in real time
+kubectl get hpa sigs-rs-gateway-hpa -n sigs-rs -w
+
+# Generate CPU load to trigger scaling (separate terminal)
+kubectl run -it --rm load --image=busybox --restart=Never -n sigs-rs -- \
+  sh -c "while true; do wget -qO- http://sigs-rs-gateway/health; done"
+
+# Note: stabilizationWindowSeconds: 120 for scaleUp evaluates the highest recommendation
+# over the past 2 minutes to prevent rapid fluctuation, but Kubernetes HPA does NOT strictly
+# guarantee load remains above 75% for 120s continuously before it scales up.
+# Scale down waits 300s to avoid thrashing.
+```
+
+### Observability
+
+```bash
+# Health (liveness / fail-closed state)
+curl http://localhost:8080/health
+
+# Readiness
+curl http://localhost:8080/ready
+
+# Prometheus text exposition format
+curl http://localhost:8080/metrics
+
+# JSON metrics
+curl -H "Accept: application/json" http://localhost:8080/metrics
+
+# Describe HPA events and decisions
+kubectl describe hpa sigs-rs-gateway-hpa -n sigs-rs
+
+# Structured logs from all gateway pods
+kubectl logs -l app.kubernetes.io/component=gateway -n sigs-rs --follow
+```
+
+### Production Considerations
+
+| Concern | Current (local/demo) | Production recommendation |
+|---|---|---|
+| **Sliding-window state** | ✅ Redis-backed shared `SlidingWindow` | Redis cluster with persistence and eviction |
+| **MQTT duplicate delivery** | ✅ MQTT shared subscriptions (`$share/sigs-rs/telemetry/#`) | EMQX cluster or AWS IoT Core |
+| **Circuit breaker state** | Per-pod, independent (Intentional) | Shared state is generally an anti-pattern. If one pod loses DB connectivity, only that pod should trip. If the DB is globally down, all pods will independently trip. |
+| **TimescaleDB** | Single-node StatefulSet | Managed cloud DB or TimescaleDB Operator with replication |
+| **Mosquitto** | Single-pod, no clustering | EMQX cluster / managed MQTT (AWS IoT Core, HiveMQ Cloud) |
+| **TLS** | Disabled (plaintext 1883) | mTLS on port 8883 (SRS REQ-TI-1, REQ-SE-1) |
+| **Secrets** | `kubectl create secret` | HashiCorp Vault, AWS Secrets Manager, Sealed Secrets, SOPS |
+| **Image** | `IfNotPresent` / local build | Pinned digest + private registry + image scanning |
+| **Ingress** | Port-forward | NGINX/Traefik Ingress + TLS cert-manager |
+| **Monitoring** | `/metrics` text scrape | Prometheus Operator + Grafana dashboards + alerting |
 
 ---
 
@@ -341,6 +483,8 @@ sigs-rs/
 | REQ-SE-4: Audit logging | ✅ AuditLogger Phase 1 |
 | REQ-SF-1: Production DB guard | ✅ config.py Phase 1 |
 | REQ-SF-2: Circuit breaker | Phase 5 |
+| REQ-QA-1: K8s liveness restart < 30 s | ✅ Phase 13 (5 s period × 3 = 15 s) |
+| REQ-QA-3: Kubernetes readiness | ✅ Phase 13 |
 | REQ-QA-4: Independently testable middleware | ✅ Phase 1 |
 
 ---

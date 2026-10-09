@@ -212,28 +212,28 @@ async def test_circuit_breaker_half_open_probe_success(client: AsyncClient, app:
 
     cb = app.state.circuit_breaker
     cb.cooldown_seconds = 1  # Fast cooldown for testing
-    
+
     # Replace probe action temporarily on CB directly for clean state
     # main.py passes repo.probe_connection, but we patch it here
     probe_calls = 0
     async def mock_probe():
         nonlocal probe_calls
         probe_calls += 1
-    
+
     old_probe_action = cb._probe_action
     cb._probe_action = mock_probe
 
     # Force the circuit breaker OPEN
     cb._trip()
     assert cb.state.name == "OPEN"
-    
+
     # Wait for cooldown to expire and the background probe task to fire
     await asyncio.sleep(1.2)
 
     # The probe should have fired successfully, and transitioned back to CLOSED
     assert cb.state.name == "CLOSED"
     assert probe_calls == 1
-    
+
     cb._probe_action = old_probe_action
 
 async def test_circuit_breaker_half_open_probe_failure(client: AsyncClient, app: FastAPI):
@@ -248,7 +248,7 @@ async def test_circuit_breaker_half_open_probe_failure(client: AsyncClient, app:
         nonlocal probe_calls
         probe_calls += 1
         raise RuntimeError("Database is still down")
-        
+
     old_probe_action = cb._probe_action
     cb._probe_action = mock_probe_fail
 
@@ -261,7 +261,7 @@ async def test_circuit_breaker_half_open_probe_failure(client: AsyncClient, app:
     # The probe failed, should transition back to OPEN and restart cooldown
     assert cb.state.name == "OPEN"
     assert probe_calls == 1
-    
+
     cb._probe_action = old_probe_action
 
 async def test_circuit_breaker_rejection_of_concurrent_probes_and_traffic(client: AsyncClient, app: FastAPI):
@@ -270,18 +270,18 @@ async def test_circuit_breaker_rejection_of_concurrent_probes_and_traffic(client
 
     cb = app.state.circuit_breaker
     cb.cooldown_seconds = 1
-    
+
     # We want to manually control the probe to simulate in-flight state
     probe_event = asyncio.Event()
     async def mock_probe_slow():
         await probe_event.wait()
-        
+
     old_probe_action = cb._probe_action
     cb._probe_action = mock_probe_slow
 
     cb._trip()
     await asyncio.sleep(1.2)
-    
+
     # The background probe is now stuck waiting for probe_event.
     # Therefore it is in HALF_OPEN state and _probe_in_flight is True.
     assert cb._state.name == "HALF_OPEN"
@@ -294,7 +294,7 @@ async def test_circuit_breaker_rejection_of_concurrent_probes_and_traffic(client
             pass
         await cb.call(mock_write())
     assert "probe is already in-flight" in str(excinfo.value)
-    
+
     # Try HTTP ingestion -> should be rejected with 503 because is_open is True
     payload = {
         "sensor_id": "test-sensor-conc",
@@ -305,15 +305,15 @@ async def test_circuit_breaker_rejection_of_concurrent_probes_and_traffic(client
     }
     resp = await client.post("/api/v1/telemetry", json=payload)
     assert resp.status_code == 503
-    
+
     # Unblock the probe
     probe_event.set()
     await asyncio.sleep(0.1)
-    
+
     # It should have succeeded and transitioned to CLOSED
     assert cb.state.name == "CLOSED"
     assert cb._probe_in_flight is False
-    
+
     cb._probe_action = old_probe_action
 
 async def test_mqtt_recovery_blocked_when_fail_closed_true(client: AsyncClient, app: FastAPI):

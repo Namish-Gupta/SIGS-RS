@@ -71,6 +71,12 @@ class Settings(BaseSettings):
 
     max_payload_size_bytes: int = Field(default=constants.MAX_PAYLOAD_BYTES)
 
+    # ─── Redis ────────────────────────────────────────────────────────────────
+    redis_url: str | None = Field(
+        default=None,
+        description="Redis connection URL (e.g. redis://localhost:6379/0). Used for shared rate-limiting state.",
+    )
+
     # ─── Circuit Breaker ──────────────────────────────────────────────────────
     circuit_breaker_failure_threshold_ms: int = Field(
         default=constants.CB_FAILURE_THRESHOLD_MS

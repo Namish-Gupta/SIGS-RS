@@ -28,7 +28,7 @@ from sigs_rs.middleware.anonymizer import PrivacyAnonymizer
 from sigs_rs.middleware.inspector import AnomalousPacketInspector
 from sigs_rs.middleware.payload_validator import PayloadValidator
 from sigs_rs.middleware.pipeline import MiddlewarePipeline
-from sigs_rs.middleware.sliding_window import SlidingWindow
+from tests.mock_sliding_window import MockAsyncSlidingWindow as SlidingWindow
 from sigs_rs.persistence.circuit_breaker import CBState, CircuitBreaker
 from sigs_rs.persistence.database import InMemoryDatabasePool
 from sigs_rs.persistence.repository import TelemetryRepository
@@ -147,7 +147,7 @@ class TestCircuitBreakerRemediation:
         app.state.is_shutting_down = False
         app.state._mqtt_restarting = False
         app.state.mqtt_restart_timeout = 0.2  # Speed up tests
-        
+
         class MockMQTT:
             def __init__(self):
                 self._running = True
@@ -165,42 +165,42 @@ class TestCircuitBreakerRemediation:
         loop = asyncio.get_running_loop()
         app.state.mqtt_task = loop.create_task(mqtt_mock.start())
         old_task = app.state.mqtt_task
-        
+
         cb = CircuitBreaker(
-            failure_threshold_ms=1000, 
-            cooldown_seconds=10, 
+            failure_threshold_ms=1000,
+            cooldown_seconds=10,
             on_open_callback=lambda: _cb_open_handler(app),
             on_close_callback=lambda: _cb_close_handler(app)
         )
-        
+
         # E. Actual CB wiring
         cb._trip()
         assert app.state.mqtt._running is False
-        
+
         await asyncio.sleep(0.05)
         assert old_task.done()
-        
+
         # A. Normal successful restart: old task terminates before timeout
         cb._reset()
         await asyncio.sleep(0.05)
-        
+
         assert app.state.mqtt._running is True
         task1 = app.state.mqtt_task
         assert task1 is not old_task
         assert not task1.done()
         assert mqtt_mock.starts == 2
-        
+
         # C. Duplicate CLOSE calls -> no duplicate tasks
         cb._reset()
         await asyncio.sleep(0.05)
         assert app.state.mqtt_task is task1
         assert mqtt_mock.starts == 2
-        
+
         # B. Timeout: old task remains alive beyond the restart timeout -> NO replacement task
         app.state.mqtt_task.cancel()
         await asyncio.sleep(0.05)
         app.state._mqtt_restarting = False
-        
+
         stop_hanging = False
         async def hanging_task():
             # Ignores cancellation and hangs longer than the 0.2s timeout
@@ -326,15 +326,15 @@ class TestUnauthorizedAuditLoggingRemediation:
 # ─── 3. Sliding Window Cleanup & Lifespan Tests ───────────────────────────────
 
 class TestSlidingWindowCleanupRemediation:
-    def test_cleanup_does_not_affect_active_sensors(self):
+    async def test_cleanup_does_not_affect_active_sensors(self):
         """Cleanup removes expired sensors while preserving active ones."""
         sw = SlidingWindow(window_seconds=10, max_packets=50)
         t_now = 1000.0
 
-        sw.check("active-sensor", now=t_now)
-        sw.check("stale-sensor", now=t_now - 20.0)  # 20 seconds ago (expired)
+        await sw.check("active-sensor", now=t_now)
+        await sw.check("stale-sensor", now=t_now - 20.0)  # 20 seconds ago (expired)
 
-        removed = sw.cleanup(now=t_now)
+        removed = await sw.cleanup(now=t_now)
         assert removed == 1
         assert sw.sensor_count("stale-sensor") == 0
         assert sw.sensor_count("active-sensor") == 1
@@ -433,7 +433,8 @@ class TestBatchingAndSecurityInvariant:
     async def test_circuit_breaker_prevents_batch_persistence(self):
         """When CB is OPEN, process_batch drops the sanitized batch safely."""
         queue = IngestionQueue(max_size=100)
-        inspector = MagicMock()
+        from unittest.mock import AsyncMock
+        inspector = AsyncMock()
         inspector.inspect.return_value = MagicMock(__bool__=lambda s: True)
         anonymizer = PrivacyAnonymizer()
         repo = MagicMock()

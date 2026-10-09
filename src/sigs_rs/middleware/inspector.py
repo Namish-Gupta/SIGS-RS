@@ -91,7 +91,7 @@ class AnomalousPacketInspector:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def inspect(self, packet: RawTelemetryPacket) -> VerificationResult:
+    async def inspect(self, packet: RawTelemetryPacket) -> VerificationResult:
         """
         Run the full inspection pipeline on a single packet.
 
@@ -106,7 +106,7 @@ class AnomalousPacketInspector:
         sensor_id = packet.sensor_id
 
         # ── Step 1: Rate-limit check (cheapest first) ─────────────────────
-        if not self._window.check(sensor_id):
+        if not await self._window.check(sensor_id):
             self._dropped_rate += 1
             self._audit_drop(
                 AuditEvent.PACKET_DROPPED_RATE,

@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS ConfigMap — Gateway Non-Secret Configuration
+#
+# All values here are non-sensitive.  Secrets (JWT key, DB password, etc.)
+# are in secret-template.yaml and must be supplied separately.
+#
+# SRS REQ-QA-3: identical configuration across local and enterprise environments.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigs-rs-config
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: sigs-rs
+    app.kubernetes.io/component: gateway
+data:
+  # ── Application ────────────────────────────────────────────────────────────
+  APP_ENV: "production"
+  APP_HOST: "0.0.0.0"
+  APP_PORT: "8000"
+  DEBUG: "false"
+
+  # ── Database (non-secret connection parameters) ───────────────────────────
+  # The full DATABASE_URL (with credentials) is in the Secret.
+  # ALLOWED_DB_HOSTS must never contain 'prod', 'production', or 'live'
+  # (SRS REQ-SF-1 — the Settings validator blocks production hosts).
+  ALLOWED_DB_HOSTS: "timescaledb,timescaledb.sigs-rs.svc.cluster.local"
+  DATABASE_SSL_MODE: "require"
+
+  # ── MQTT Broker ────────────────────────────────────────────────────────────
+  # mqtt_broker_host is the Kubernetes Service name for Mosquitto.
+  MQTT_BROKER_HOST: "mosquitto"
+  MQTT_BROKER_PORT: "1883"
+  # Set to 'true' and configure cert paths if using mTLS in production.
+  MQTT_USE_TLS: "false"
+  # Mandatory 2: Real MQTT shared subscriptions
+  MQTT_TOPIC_PREFIX: "$share/sigs-rs/telemetry/#"
+  # Each pod must have a unique client ID to avoid broker kick-offs.
+  # This is overridden per-pod in the Deployment via the downward API
+  # (see the MQTT_CLIENT_ID env entry in deployment.yaml).
+  MQTT_CLIENT_ID: "sigs-rs-gateway"
+
+  # ── Security Middleware ────────────────────────────────────────────────────
+  # Anomalous Packet Inspector sliding window.
+  # Globally consistent rate limiting backed by Redis.
+  INSPECTOR_WINDOW_SECONDS: "10"
+  INSPECTOR_MAX_PACKETS_PER_WINDOW: "50"
+  INSPECTOR_WINDOW_CLEANUP_INTERVAL: "60"
+
+  # Privacy Anonymizer PII fields to strip (SRS REQ-PA-1)
+  ANONYMIZER_PII_FIELDS: "latitude,longitude,lat,lon,mac_address,device_id,geo"
+
+  # Maximum telemetry payload size in bytes (SRS REQ-TI-3: 512 KB)
+  MAX_PAYLOAD_SIZE_BYTES: "524288"
+
+  # ── Circuit Breaker ────────────────────────────────────────────────────────
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD_MS: "2000"
+  CIRCUIT_BREAKER_COOLDOWN_SECONDS: "30"
+
+  # ── Auth ───────────────────────────────────────────────────────────────────
+  JWT_ALGORITHM: "HS256"
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  ADMIN_ROLE: "security_engineer"
+
+  # ── Ingestion Queue ────────────────────────────────────────────────────────
+  # Per-pod queue. The aggregate capacity scales with replica count.
+  INGESTION_QUEUE_MAX_SIZE: "10000"

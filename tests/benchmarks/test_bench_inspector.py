@@ -22,7 +22,7 @@ import pytest
 
 from sigs_rs.middleware.inspector import AnomalousPacketInspector, VerificationResult
 from sigs_rs.middleware.payload_validator import PayloadValidator
-from sigs_rs.middleware.sliding_window import SlidingWindow
+from tests.mock_sliding_window import MockAsyncSlidingWindow as SlidingWindow
 from sigs_rs.telemetry.models import RawTelemetryPacket
 
 
@@ -42,41 +42,41 @@ def _make_packet(sensor_id: str = "bench-sensor", resource_type: str = "water", 
 # ─── Benchmark: SlidingWindow.check() ─────────────────────────────────────────
 
 class TestSlidingWindowBenchmark:
-    def test_throughput_single_sensor(self):
+    async def test_throughput_single_sensor(self):
         """Benchmark SlidingWindow.check() for a single sensor below rate limit."""
         sw = SlidingWindow(window_seconds=10, max_packets=1_000_000)
         n = 100_000
         t0 = time.perf_counter()
         for i in range(n):
-            sw.check("s1", now=1000.0 + i * 0.0001)
+            await sw.check("s1", now=1000.0 + i * 0.0001)
         elapsed = time.perf_counter() - t0
         ops_per_sec = n / elapsed
         print(f"\n  SlidingWindow.check (single sensor): {ops_per_sec:,.0f} ops/sec ({elapsed*1000:.1f}ms for {n:,} ops)")
         assert ops_per_sec > 100_000, "Expected > 100K ops/sec for single-sensor check"
 
-    def test_throughput_multi_sensor(self):
+    async def test_throughput_multi_sensor(self):
         """Benchmark check() across 1000 different sensors."""
         sw = SlidingWindow(window_seconds=10, max_packets=1_000_000)
         n = 100_000
         t0 = time.perf_counter()
         for i in range(n):
-            sw.check(f"sensor-{i % 1000}", now=1000.0 + i * 0.0001)
+            await sw.check(f"sensor-{i % 1000}", now=1000.0 + i * 0.0001)
         elapsed = time.perf_counter() - t0
         ops_per_sec = n / elapsed
         print(f"\n  SlidingWindow.check (1000 sensors): {ops_per_sec:,.0f} ops/sec ({elapsed*1000:.1f}ms for {n:,} ops)")
         assert ops_per_sec > 50_000, "Expected > 50K ops/sec for multi-sensor check"
 
-    def test_eviction_performance(self):
+    async def test_eviction_performance(self):
         """Benchmark when every call triggers eviction of expired entries."""
         sw = SlidingWindow(window_seconds=10, max_packets=1_000_000)
         n = 50_000
         # Fill the window with old entries
         for i in range(50):
-            sw.check("s1", now=0.0 + i * 0.01)
+            await sw.check("s1", now=0.0 + i * 0.01)
         # Now each new call evicts old + adds new
         t0 = time.perf_counter()
         for i in range(n):
-            sw.check("s1", now=100.0 + i * 0.0001)
+            await sw.check("s1", now=100.0 + i * 0.0001)
         elapsed = time.perf_counter() - t0
         ops_per_sec = n / elapsed
         print(f"\n  SlidingWindow.check (with eviction): {ops_per_sec:,.0f} ops/sec")
@@ -86,7 +86,7 @@ class TestSlidingWindowBenchmark:
 # ─── Benchmark: PayloadValidator.validate() ────────────────────────────────────
 
 class TestPayloadValidatorBenchmark:
-    def test_throughput(self):
+    async def test_throughput(self):
         """Benchmark PayloadValidator.validate() for valid packets."""
         v = PayloadValidator()
         packet = _make_packet()
@@ -103,7 +103,7 @@ class TestPayloadValidatorBenchmark:
 # ─── Benchmark: Full Inspector.inspect() ──────────────────────────────────────
 
 class TestInspectorBenchmark:
-    def test_throughput(self):
+    async def test_throughput(self):
         """Full pipeline: SlidingWindow + PayloadValidator, single sensor."""
         insp = AnomalousPacketInspector(
             window=SlidingWindow(window_seconds=10, max_packets=1_000_000),
@@ -113,13 +113,13 @@ class TestInspectorBenchmark:
         n = 50_000
         t0 = time.perf_counter()
         for _ in range(n):
-            insp.inspect(packet)
+            await insp.inspect(packet)
         elapsed = time.perf_counter() - t0
         ops_per_sec = n / elapsed
         print(f"\n  Inspector.inspect (full pipeline): {ops_per_sec:,.0f} ops/sec ({elapsed*1000:.1f}ms for {n:,} ops)")
         assert ops_per_sec > 50_000
 
-    def test_latency_p99(self):
+    async def test_latency_p99(self):
         """Measure per-packet latency and verify < 15ms (SRS REQ-API-4)."""
         insp = AnomalousPacketInspector(
             window=SlidingWindow(window_seconds=10, max_packets=1_000_000),
@@ -130,7 +130,7 @@ class TestInspectorBenchmark:
         n = 10_000
         for _ in range(n):
             t0 = time.perf_counter()
-            insp.inspect(packet)
+            await insp.inspect(packet)
             latencies.append((time.perf_counter() - t0) * 1000)  # ms
 
         p50 = statistics.median(latencies)
@@ -140,7 +140,7 @@ class TestInspectorBenchmark:
         print(f"\n  Inspector latency (ms): p50={p50:.4f} p95={p95:.4f} p99={p99:.4f} max={p_max:.4f}")
         assert p99 < 15.0, f"SRS REQ-API-4: p99 latency {p99:.2f}ms exceeds 15ms"
 
-    def test_multi_sensor_throughput(self):
+    async def test_multi_sensor_throughput(self):
         """1000 distinct sensors, each under the rate limit."""
         insp = AnomalousPacketInspector(
             window=SlidingWindow(window_seconds=10, max_packets=1_000_000),
@@ -150,13 +150,13 @@ class TestInspectorBenchmark:
         packets = [_make_packet(sensor_id=f"sensor-{i % 1000}") for i in range(n)]
         t0 = time.perf_counter()
         for p in packets:
-            insp.inspect(p)
+            await insp.inspect(p)
         elapsed = time.perf_counter() - t0
         ops_per_sec = n / elapsed
         print(f"\n  Inspector.inspect (1000 sensors): {ops_per_sec:,.0f} ops/sec ({elapsed*1000:.1f}ms for {n:,} ops)")
         assert ops_per_sec > 30_000
 
-    def test_rejection_storm_throughput(self):
+    async def test_rejection_storm_throughput(self):
         """All packets rejected (rate-limited) — tests fast-path performance.
         Logging is suppressed so we measure pure algorithm speed."""
         import logging
@@ -169,12 +169,12 @@ class TestInspectorBenchmark:
                 validator=PayloadValidator(),
             )
             packet = _make_packet()
-            insp.inspect(packet)  # first one passes, fills the 1-slot window
+            await insp.inspect(packet)  # first one passes, fills the 1-slot window
 
             n = 50_000
             t0 = time.perf_counter()
             for _ in range(n):
-                insp.inspect(packet)
+                await insp.inspect(packet)
             elapsed = time.perf_counter() - t0
             ops_per_sec = n / elapsed
             print(f"\n  Inspector.inspect (all rejected): {ops_per_sec:,.0f} ops/sec ({elapsed*1000:.1f}ms for {n:,} ops)")

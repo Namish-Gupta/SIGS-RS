@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGS-RS Horizontal Pod Autoscaler
+#
+# Scale the gateway Deployment based on CPU utilization.
+#
+# Requirement from SRS Phase 13:
+#   Scale when sustained CPU utilization exceeds 75% for ~2 minutes.
+#
+# Implementation:
+#   - HPA v2 with a stabilizationWindowSeconds of 120 s on scale-up.
+#   - CPU target: 75% of the pod's resource request (250m → 187.5m).
+#   - Minimum 2 replicas for HA; maximum 10 replicas.
+#   - Scale-down is conservative (300 s window) to avoid thrashing.
+#
+# Prerequisites:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#   (minikube: minikube addons enable metrics-server)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sigs-rs-gateway-hpa
+  namespace: sigs-rs
+  labels:
+    app.kubernetes.io/name: sigs-rs
+    app.kubernetes.io/component: gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sigs-rs-gateway
+
+  minReplicas: 2
+  maxReplicas: 10
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # 75% of the requested 250m = 187.5m average across all pods.
+          averageUtilization: 75
+
+  behavior:
+    # ── Scale-up behavior ───────────────────────────────────────────────────
+    # Only scale up after sustained load for ~2 minutes (120 s window).
+    # Add at most 2 pods per 60 s to avoid an instantaneous spike from
+    # triggering runaway scaling.
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+
+    # ── Scale-down behavior ─────────────────────────────────────────────────
+    # Scale down conservatively: wait 5 minutes after load drops to avoid
+    # thrashing.  Remove at most 1 pod per 60 s.
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Max

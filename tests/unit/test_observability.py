@@ -305,7 +305,7 @@ class TestStructuredLoggingAndRedaction:
 class TestEndpointsObservability:
     @pytest.mark.asyncio
     async def test_metrics_prometheus_default_and_headers(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -350,7 +350,7 @@ class TestEndpointsObservability:
 
     @pytest.mark.asyncio
     async def test_metrics_json_content_negotiation(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -408,7 +408,7 @@ class TestEndpointsObservability:
 
     @pytest.mark.asyncio
     async def test_correlation_id_middleware_header_propagation(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -439,18 +439,18 @@ class TestEndpointsObservability:
             assert resp_gen.status_code == 200
             assert "X-Correlation-ID" in resp_gen.headers
             assert resp_gen.headers["X-Correlation-ID"].startswith("req-")
-            
+
             # When caller sends invalid ID, server rejects and generates
             resp_invalid = await client.get("/health", headers={"X-Correlation-ID": "invalid!@#"})
             assert resp_invalid.headers["X-Correlation-ID"].startswith("req-")
-            
+
             # When caller sends overly long ID, server rejects and generates
             resp_long = await client.get("/health", headers={"X-Correlation-ID": "a" * 65})
             assert resp_long.headers["X-Correlation-ID"].startswith("req-")
 
     @pytest.mark.asyncio
     async def test_health_and_readiness_probe_matrix(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -514,19 +514,20 @@ class TestPipelineMetricsIntegration:
         metrics.reset()
 
         queue = IngestionQueue(max_size=100)
-        inspector = MagicMock()
+        from unittest.mock import AsyncMock
+        inspector = AsyncMock()
         anonymizer = MagicMock()
-        
+
         async def fake_save(batch): pass
         repo = MagicMock()
         repo.save_batch = fake_save
         async def fake_insert(*args, **kwargs): pass
         repo.insert = fake_insert
-        
+
         async def fake_cb_call(coro): return await coro
         cb = MagicMock()
         cb.call = fake_cb_call
-        
+
         async def fake_audit(*args, **kwargs): pass
         audit = MagicMock()
         audit.log = fake_audit
@@ -636,7 +637,7 @@ class TestAuditFindingsMetrics:
 
     @pytest.mark.asyncio
     async def test_request_validation_error_metrics(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -667,7 +668,7 @@ class TestAuditFindingsMetrics:
 
     @pytest.mark.asyncio
     async def test_oversized_payload_metrics(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -700,14 +701,14 @@ class TestAuditFindingsLogging:
     def test_pii_redaction_in_strings(self):
         # Testing string scrubbing
         from sigs_rs.observability.logging import redact_sensitive_data
-        
+
         # Test 1: Exception string containing raw payload
         exc_str = "MalformedPayloadError: input_value={'latitude': 123.45, 'mac': '00:11:22:33:44:55'}"
         scrubbed_exc = redact_sensitive_data(exc_str)
         assert "123.45" not in scrubbed_exc
         assert "00:11:22:33:44:55" not in scrubbed_exc
         assert "[REDACTED]" in scrubbed_exc
-        
+
         # Test 2: JWT in string
         jwt_str = "Found Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c here"
         scrubbed_jwt = redact_sensitive_data(jwt_str)
@@ -727,11 +728,11 @@ class TestAuditFindingsMiddleware:
     async def test_correlation_id_reset_after_request(self):
         app = create_app()
         from sigs_rs.observability.logging import get_correlation_id
-        
+
         @app.get("/test_cid")
         def test_cid():
             return {"cid": get_correlation_id()}
-            
+
         initial_cid = get_correlation_id()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test_cid", headers={"X-Correlation-ID": "test-cid-123"})
@@ -740,7 +741,7 @@ class TestAuditFindingsMiddleware:
 
     @pytest.mark.asyncio
     async def test_correlation_id_validation(self):
-        
+
         class DummyState:
             name = "CLOSED"
         class DummyCB:
@@ -763,12 +764,12 @@ class TestAuditFindingsMiddleware:
             # Valid
             r1 = await client.get("/health", headers={"X-Correlation-ID": "valid-id-123"})
             assert r1.headers["X-Correlation-ID"] == "valid-id-123"
-            
+
             # Invalid chars
             r2 = await client.get("/health", headers={"X-Correlation-ID": "invalid<script>"})
             assert r2.headers["X-Correlation-ID"] != "invalid<script>"
             assert r2.headers["X-Correlation-ID"].startswith("req-")
-            
+
             # Too long
             long_id = "a" * 70
             r3 = await client.get("/health", headers={"X-Correlation-ID": long_id})
@@ -778,69 +779,69 @@ class TestAuditFindingsMiddleware:
 def test_json_nested_redaction():
     from sigs_rs.observability.logging import scrub_string
     import json
-    
+
     # 1. Arrays
     assert scrub_string('{"latitude":[12.34]}') == '{"latitude": "[REDACTED]"}'
-    
+
     # 2. Objects
     assert scrub_string('{"longitude":{"value":80.12}}') == '{"longitude": "[REDACTED]"}'
-    
+
     # 3. device_id array
     assert scrub_string('{"device_id":["SECRET"]}') == '{"device_id": "[REDACTED]"}'
-    
+
     # 4. Multiple mixed
     input_str = '{"payload": {"coords": {"latitude": 1.2, "longitude": 2.3}}, "password": "123"}'
     out = scrub_string(input_str)
     parsed = json.loads(out)
     assert parsed["payload"] == "[REDACTED]"
     assert parsed["password"] == "[REDACTED]"
-    
+
     # 5. Deeply nested array of objects
     assert scrub_string('{"payload":[{"location":{"latitude":12.34}}]}') == '{"payload": "[REDACTED]"}'
-    
+
     # 6. Malformed JSON
     assert scrub_string('{"latitude": 1.2, malformed}') == '{"latitude": [REDACTED], malformed}'
-    
+
     # 7. Ordinary non-sensitive strings
     assert scrub_string('{"message": "ordinary non-sensitive string"}') == '{"message": "ordinary non-sensitive string"}'
-    
+
     # 8. Exception messages with JSON
     assert scrub_string('Error: input_value={"latitude": 1.2}') == 'Error: input_value=[REDACTED]'
-    
+
     # 9. Pydantic ValidationError containing raw telemetry
     assert scrub_string('type=type_error.dict; input_value={"coords": {"lat": 1.2}}') == 'type=type_error.dict; input_value=[REDACTED]'
-    
+
     # 10. Authorization/Bearer token
     assert scrub_string('Headers: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c') == 'Headers: [REDACTED]'
 
 def test_json_multiline_redaction():
     from sigs_rs.observability.logging import scrub_string
     import json
-    
+
     # multiline device_id arrays
     multiline_device = '{\n  "device_id": [\n    "SECRET1",\n    "SECRET2"\n  ]\n}'
     assert scrub_string(multiline_device) == '{"device_id": "[REDACTED]"}'
-    
+
     # multiline latitude/longitude arrays
     multiline_lat = '{\n  "payload": {\n    "latitude": [\n      1.2,\n      2.3\n    ]\n  }\n}'
     assert scrub_string(multiline_lat) == '{"payload": "[REDACTED]"}'
-    
+
     # nested multiline payloads
     nested_multiline = '{\n  "payload": {\n    "nested": {\n      "device_id": [\n        "A",\n        "B"\n      ]\n    }\n  }\n}'
     assert scrub_string(nested_multiline) == '{"payload": "[REDACTED]"}'
-    
+
     # multiline password/secret
     multiline_pwd = '{\n  "password": "this\\nis\\nsecret"\n}'
     assert scrub_string(multiline_pwd) == '{"password": "[REDACTED]"}'
-    
+
     # malformed/truncated multiline JSON
     malformed_multiline = 'Exception: {\n  "device_id": [\n    "SECRET1"'
     assert scrub_string(malformed_multiline) == 'Exception: {\n  "device_id": [REDACTED]'
-    
+
     # Pydantic multiline exception text
     pydantic_err = '1 validation error for Model\ndevice_id\n  input_value=[\n  "SECRET"\n]\n  type=value_error'
     assert scrub_string(pydantic_err) == '1 validation error for Model\ndevice_id\n  input_value=[REDACTED]\n  type=value_error'
-    
+
     # ordinary multiline non-sensitive messages
     ordinary_msg = 'Exception: {\n  "status": "ok",\n  "count": 5\n}'
     assert scrub_string(ordinary_msg) == 'Exception: {\n  "status": "ok",\n  "count": 5\n}'

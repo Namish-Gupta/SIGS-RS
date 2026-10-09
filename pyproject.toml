@@ -33,6 +33,7 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.0.1",
     "structlog>=24.4.0",
+    "redis>=5.2.0",
 ]
 
 [project.optional-dependencies]
@@ -42,12 +43,14 @@ dev = [
     "pytest-cov>=6.0.0",
     "httpx>=0.28.0",
     "anyio>=4.6.0",
+    "fakeredis>=2.20.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
+markers = ["real_redis: Requires actual Redis to run"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]

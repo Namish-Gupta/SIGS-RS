@@ -12,7 +12,7 @@ from sigs_rs.middleware.anonymizer import PrivacyAnonymizer, _find_keys
 from sigs_rs.middleware.inspector import AnomalousPacketInspector, VerificationResult
 from sigs_rs.middleware.payload_validator import PayloadValidator
 from sigs_rs.middleware.pipeline import MiddlewarePipeline
-from sigs_rs.middleware.sliding_window import SlidingWindow
+from tests.mock_sliding_window import MockAsyncSlidingWindow as SlidingWindow
 from sigs_rs.persistence.circuit_breaker import CircuitBreaker
 from sigs_rs.telemetry.models import RawTelemetryPacket, SanitizedTelemetryPacket
 
@@ -43,7 +43,7 @@ def _pipeline(inspector, anonymizer, repository, audit_logger) -> MiddlewarePipe
 
 @pytest.mark.asyncio
 async def test_pipeline_only_anonymizes_verified_packets():
-    inspector = MagicMock()
+    inspector = AsyncMock()
     inspector.inspect.return_value = VerificationResult.INVALID_METRIC
     anonymizer = MagicMock()
     repository = MagicMock()
@@ -59,7 +59,7 @@ async def test_pipeline_only_anonymizes_verified_packets():
 
 @pytest.mark.asyncio
 async def test_pipeline_drops_and_audits_anonymizer_failure_without_persisting_raw():
-    inspector = MagicMock()
+    inspector = AsyncMock()
     inspector.inspect.return_value = VerificationResult.VERIFIED
     anonymizer = MagicMock()
     anonymizer.anonymize.side_effect = AnonymizerError("unsafe payload structure")
