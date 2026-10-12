@@ -1,0 +1,86 @@
+\section{Performance Evaluation and Empirical Benchmarking}
+
+\subsection{Benchmarking Objectives and Environment Specification}
+The performance characteristics of SIGS-RS were empirically evaluated using the automated benchmarking harness implemented in \texttt{benchmarks/}. The evaluation specifically benchmarks the system against the performance targets stipulated in the authoritative SRS:
+\begin{itemize}
+    \item \textbf{REQ-PF-1 (Target Throughput):} 50,000 telemetry packets/second across up to 10,000 concurrent sensors.
+    \item \textbf{REQ-PF-2 (Middleware Latency Ceiling):} Combined Inspector and Anonymizer latency under 15.0~ms per packet.
+    \item \textbf{REQ-PF-3 (Memory Utilization):} Active memory consumption strictly bounded under 24~GB RAM.
+    \item \textbf{REQ-API-4 (Inspector Latency Ceiling):} Sliding-window inspection and physical validation under 15.0~ms per packet.
+\end{itemize}
+
+All benchmark measurements were gathered in a resource-constrained development environment without starting containerized external services or memory-saturating stress loads:
+\begin{itemize}
+    \item \textbf{Hardware Platform:} WSL2 Linux kernel 6.6.87 (x86\_64) hosted on 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz (8 logical threads), 3,814.2~MiB total system memory.
+    \item \textbf{Execution Constraints:} Single Python process running under Python 3.12.3. Measurements reflect local single-core CPU capacity on the test machine, providing an empirical baseline for algorithmic efficiency rather than cluster-scale capacity.
+\end{itemize}
+
+\subsection{Component Saturation Microbenchmarks}
+Table~\ref{tab:saturation_microbenchmarks} reports unpaced saturation microbenchmarks measuring raw single-core throughput and latency distributions across Stages 0, 1, and 2.
+
+\begin{table}[H]
+\centering
+\caption{Component Saturation Microbenchmark Results (Stages 0, 1, and 2)}
+\label{tab:saturation_microbenchmarks}
+\scriptsize
+\begin{tabularx}{\linewidth}{@{}l l r r r r r r r@{}}
+\toprule
+\textbf{Component Suite} & \textbf{Workload Stage} & \textbf{Packets} & \textbf{Throughput (pkts/s)} & \textbf{Avg (ms)} & \textbf{p50 (ms)} & \textbf{p95 (ms)} & \textbf{p99 (ms)} & \textbf{Peak RSS} \\
+\midrule
+\texttt{inspector\_in\_memory} & Stage 0 (10 sensors) & 200 & 106,615.7 & 0.0065 & 0.0059 & 0.0079 & 0.0292 & 62.9 MiB \\
+\texttt{anonymizer\_only} & Stage 0 (10 sensors) & 200 & 11,052.6 & 0.0876 & 0.0750 & 0.1309 & 0.1898 & 66.1 MiB \\
+\texttt{middleware\_combined} & Stage 0 (10 sensors) & 200 & 8,831.2 & 0.1096 & 0.1065 & 0.1596 & 0.2809 & 66.1 MiB \\
+\midrule
+\texttt{inspector\_in\_memory} & Stage 1 (100 sensors) & 3,000 & 113,129.4 & 0.0075 & 0.0071 & 0.0104 & 0.0187 & 75.8 MiB \\
+\texttt{anonymizer\_only} & Stage 1 (100 sensors) & 3,000 & 10,138.9 & 0.0969 & 0.0883 & 0.1651 & 0.2506 & 76.2 MiB \\
+\texttt{middleware\_combined} & Stage 1 (100 sensors) & 3,000 & 6,368.1 & 0.1539 & 0.1249 & 0.3117 & 0.4314 & 76.3 MiB \\
+\midrule
+\texttt{inspector\_in\_memory} & Stage 2 (1,000 sensors) & 15,000 & 149,761.4 & 0.0058 & 0.0047 & 0.0098 & 0.0175 & 119.2 MiB \\
+\texttt{anonymizer\_only} & Stage 2 (1,000 sensors) & 15,000 & 11,020.9 & 0.0893 & 0.0741 & 0.1649 & 0.2420 & 118.3 MiB \\
+\texttt{middleware\_combined} & Stage 2 (1,000 sensors) & 15,000 & 7,538.2 & 0.1299 & 0.1159 & 0.2298 & 0.3722 & 120.8 MiB \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Rate-Controlled End-to-End Pipeline Evaluation}
+To evaluate behavior under paced, concurrent producer-consumer loads, the Category 4 E2E suite injects packets into \texttt{IngestionQueue} at configured target arrival rates. The background pipeline worker dequeues packets in batches of 100, conducts inspector validation and privacy anonymization, and persists sanitized records to \texttt{InMemoryDatabasePool}. End-to-end latency is measured individually per packet from the moment of ingestion enqueue until persistence completion. Table~\ref{tab:e2e_results} summarizes the observed end-to-end performance.
+
+\begin{table}[H]
+\centering
+\caption{Rate-Controlled End-to-End Pipeline Evaluation (Category 4)}
+\label{tab:e2e_results}
+\small
+\begin{tabularx}{\linewidth}{@{}l r r r r r r r r@{}}
+\toprule
+\textbf{Stage} & \textbf{Sensors} & \textbf{Offered Rate} & \textbf{Persisted Rate} & \textbf{E2E Avg} & \textbf{E2E p50} & \textbf{E2E p95} & \textbf{E2E p99} & \textbf{Max Queue} \\
+\midrule
+\textbf{Stage 0} & 10 & 100.3 pkts/s & 95.2 pkts/s & 0.63 ms & 0.61 ms & 0.94 ms & 1.05 ms & 1 \\
+\textbf{Stage 1} & 100 & 1,000.3 pkts/s & 950.3 pkts/s & 1.01 ms & 0.91 ms & 1.77 ms & 2.49 ms & 5 \\
+\textbf{Stage 2} & 1,000 & 4,021.4 pkts/s & 3,820.4 pkts/s & 5.70 ms & 5.30 ms & 9.52 ms & 11.46 ms & 25 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Packet Accounting Conservation and Latency Attribution}
+\subsubsection{Mathematical Conservation}
+In every benchmark execution, strict packet accounting conservation was mathematically validated:
+\begin{equation}
+N_{submitted} = N_{queue\_dropped} + N_{rate\_dropped} + N_{bounds\_dropped} + N_{anon\_dropped} + N_{persisted} + N_{inflight}
+\end{equation}
+In Stage 2, across 15,000 submitted packets, exactly 750 physical bound violations were generated synthetically. The inspector detected and dropped exactly 750 packets ($N_{bounds\_dropped} = 750$), while 14,250 valid packets passed through anonymization and reached database persistence ($N_{persisted} = 14,250$). Zero packets were unaccounted for, confirming $100\%$ conservation.
+
+\subsubsection{Latency Breakdown Analysis}
+Analysis of Stage 2 middleware latency distributions reveals the exact computational distribution across pipeline components:
+\begin{itemize}
+    \item \textbf{Inspector Validation (0.0058 ms avg):} Represents approximately $4.5\%$ of the combined 0.1299~ms middleware duration, demonstrating the extreme efficiency of the sliding-window deque and physical bounds checking.
+    \item \textbf{Privacy Anonymization (0.0893 ms avg):} Represents approximately $68.7\%$ of combined middleware duration, making PII dictionary stripping and field sanitization the primary computational cost within the middleware boundary.
+    \item \textbf{Pipeline Dispatch \& Conditional Logic (0.0348 ms avg):} Represents the remaining $26.8\%$ of execution time, comprising coroutine scheduling, dictionary copying, and anomaly branch handling.
+\end{itemize}
+
+\subsection{Honest Academic Disclosure of Verification Boundaries}
+In strict adherence to academic integrity and software engineering audit standards:
+\begin{enumerate}
+    \item \textbf{REQ-PF-1 Scalability Target (50,000 pkts/s across 10,000 sensors):} This specification represents an architectural target for a production cluster with 16 vCPUs and 32~GB RAM. In the local single-core WSL2 development environment, maximum single-process E2E persisted throughput reached 3,820 pkts/s. Scaled production compliance remains an unverified architectural design requirement.
+    \item \textbf{Persistence Layer Boundary:} The end-to-end benchmark utilized \texttt{InMemoryDatabasePool} to avoid unmanaged disk saturation. While this captures batching dynamics and dictionary transformations, it does not measure PostgreSQL disk write-ahead log (WAL) fsync operations or network round-trips.
+    \item \textbf{Redis Lua Rate Limiting:} Local benchmarks evaluated the in-memory deque implementation. Redis Lua testing was skipped because \texttt{fakeredis} requires the optional C-extension \texttt{lupa}, which was not installed.
+\end{enumerate}

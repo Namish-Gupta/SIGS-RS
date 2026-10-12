@@ -13,6 +13,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from sigs_rs.common.constants import COMPLIANCE_GUIDELINE_VERSION
 from sigs_rs.common.exceptions import PersistenceError
 from sigs_rs.telemetry.models import SanitizedTelemetryPacket
 
@@ -140,7 +141,8 @@ class TelemetryRepository:
                 $1, $2, $3, $4, $5, $6, $7
             );
         """
-        detail_json = json.dumps(detail or {})
+        clean_detail = self._sanitize_audit_detail(detail or {})
+        detail_json = json.dumps(clean_detail)
         try:
             await self._db.execute(
                 query,
@@ -271,15 +273,125 @@ class TelemetryRepository:
         value_json = json.dumps(value) if not isinstance(value, str) else value
         await self._db.execute(query, key, value_json, updated_by, datetime.now(timezone.utc))
 
+    async def signoff_compliance_state(
+        self,
+        expected_version: str,
+        audit_notes: str,
+        user_id: str,
+    ) -> tuple[bool, dict[str, Any]]:
+        """
+        Atomically verify guideline version and apply formal audit signoff in database.
+        Coordinates across multiple application instances using DB transaction and row-level locking (SRS BR-3).
+
+        Returns (True, new_state_dict) if signoff was successfully applied.
+        Returns (False, current_state_dict) if active version conflicted with expected_version.
+        """
+        select_query = "SELECT value FROM config.middleware_settings WHERE key = $1 FOR UPDATE;"
+        upsert_query = """
+            INSERT INTO config.middleware_settings (key, value, updated_by, updated_at)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = EXCLUDED.updated_at;
+        """
+        async with self._db.transaction() as conn:
+            raw_val = await conn.fetchval(select_query, "compliance.state")
+            current_state = {}
+            if isinstance(raw_val, str):
+                try:
+                    current_state = json.loads(raw_val)
+                except Exception:
+                    current_state = {}
+            elif isinstance(raw_val, dict):
+                current_state = raw_val
+
+            current_version = current_state.get("guideline_version", COMPLIANCE_GUIDELINE_VERSION)
+            if current_version != expected_version:
+                return False, current_state
+
+            now = datetime.now(timezone.utc)
+            new_state = {
+                "guideline_version": expected_version,
+                "approved_version": expected_version,
+                "lockout_active": False,
+                "audited": True,
+                "audit_notes": audit_notes,
+                "audited_by": user_id,
+                "audited_at": now.isoformat(),
+            }
+            await conn.execute(
+                upsert_query,
+                "compliance.state",
+                json.dumps(new_state),
+                user_id,
+                now,
+            )
+            return True, new_state
+
+    async def revise_compliance_state(
+        self,
+        new_version: str,
+        revision_reason: str,
+        user_id: str,
+    ) -> dict[str, Any]:
+        """
+        Atomically persist guideline revision and activate compliance lockout in database.
+        Coordinates across multiple application instances using DB transaction and row-level locking (SRS BR-3).
+        """
+        select_query = "SELECT value FROM config.middleware_settings WHERE key = $1 FOR UPDATE;"
+        upsert_query = """
+            INSERT INTO config.middleware_settings (key, value, updated_by, updated_at)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = EXCLUDED.updated_at;
+        """
+        async with self._db.transaction() as conn:
+            await conn.fetchval(select_query, "compliance.state")
+            now = datetime.now(timezone.utc)
+            state_payload = {
+                "guideline_version": new_version,
+                "approved_version": None,
+                "lockout_active": True,
+                "audited": False,
+                "revision_reason": revision_reason,
+                "revised_by": user_id,
+                "revised_at": now.isoformat(),
+            }
+            await conn.execute(
+                upsert_query,
+                "compliance.state",
+                json.dumps(state_payload),
+                user_id,
+                now,
+            )
+            return state_payload
+
     def _scan_for_pii(self, data: Any) -> list[str]:
-        """Recursively check any data structure for restricted PII keys."""
+        """Recursively check any data structure for restricted PII keys (case-insensitive)."""
         found: list[str] = []
         if isinstance(data, dict):
             for k, v in data.items():
-                if k in self.RESTRICTED_PII_FIELDS:
+                if k.lower() in self.RESTRICTED_PII_FIELDS:
                     found.append(k)
                 found.extend(self._scan_for_pii(v))
         elif isinstance(data, list):
             for item in data:
                 found.extend(self._scan_for_pii(item))
         return found
+
+    def _sanitize_audit_detail(self, data: Any) -> Any:
+        """Recursively redact any restricted PII keys from audit event details."""
+        if isinstance(data, dict):
+            clean = {}
+            for k, v in data.items():
+                if k.lower() in self.RESTRICTED_PII_FIELDS:
+                    clean[k] = "[REDACTED_PII]"
+                else:
+                    clean[k] = self._sanitize_audit_detail(v)
+            return clean
+        elif isinstance(data, list):
+            return [self._sanitize_audit_detail(item) for item in data]
+        return data

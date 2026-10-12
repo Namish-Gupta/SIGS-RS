@@ -128,7 +128,7 @@ async def require_audit_read_access(
     Dependency: allows Security Engineer, QA Tester, or Backend Developer to view
     configuration and audit logs (read-only access).
     """
-    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER}
+    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER, Role.COMPLIANCE_AUDITOR}
     if user.role not in allowed_roles:
         await _audit_auth_failure(
             request,
@@ -149,7 +149,7 @@ async def require_status_access(
     """
     Dependency: allows DevOps and other roles to view system health and status.
     """
-    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER, Role.DEVOPS}
+    allowed_roles = {Role.SECURITY_ENGINEER, Role.QA_TESTER, Role.BACKEND_DEVELOPER, Role.DEVOPS, Role.COMPLIANCE_AUDITOR}
     if user.role not in allowed_roles:
         await _audit_auth_failure(
             request,
@@ -159,5 +159,27 @@ async def require_status_access(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Role '{user.role}' does not have status access. Allowed: {sorted(allowed_roles)}",
+        )
+    return user
+
+
+async def require_compliance_auditor_or_security_engineer(
+    request: Request,
+    user: UserInfo = Depends(get_current_user),
+) -> UserInfo:
+    """
+    Dependency: allows Compliance Auditor or Security Engineer to sign off
+    on privacy guideline audits and lift compliance lockout (SRS BR-3).
+    """
+    allowed_roles = {Role.COMPLIANCE_AUDITOR, Role.SECURITY_ENGINEER}
+    if user.role not in allowed_roles:
+        await _audit_auth_failure(
+            request,
+            reason=f"Role '{user.role}' is not authorized for compliance audit signoff",
+            user_id=user.sub,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Role '{user.role}' is not authorized for compliance audit signoff. Required: {sorted(allowed_roles)}",
         )
     return user

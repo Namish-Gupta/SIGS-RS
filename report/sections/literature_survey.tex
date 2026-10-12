@@ -1,0 +1,30 @@
+\section{Literature Survey / Related Work}
+
+\subsection{IoT Edge Ingestion and Transport Security}
+The Internet of Things architecture relies extensively on lightweight publish-subscribe protocols for sensor telemetry transport. The Message Queuing Telemetry Transport (MQTT) standard \cite{oasis_mqtt5}, standardized by OASIS, has emerged as the de facto transport for constrained sensing nodes due to its low packet header overhead, persistent TCP sessions, and Quality of Service (QoS) levels. However, standard MQTT transmissions over port 1883 lack encryption and mutual authentication, leaving packets vulnerable to passive eavesdropping and man-in-the-middle (MitM) interception.
+
+Transport Layer Security (TLS 1.2, RFC 5246 \cite{rfc5246_tls}; TLS 1.3, RFC 8446 \cite{rfc8446_tls}) provides end-to-end cryptographic confidentiality and message integrity. In enterprise IoT deployments, mutual TLS (mTLS) extends transport security by requiring sensor nodes to present valid X.509 client certificates signed by a trusted Certificate Authority (CA). Research by Granjal et al. \cite{granjal2015security} highlights that while TLS introduces computational overhead during the initial cryptographic handshake, maintaining long-lived TLS sessions over MQTTS (port 8883) provides robust edge protection with negligible per-packet encryption penalties.
+
+\subsection{Distributed Rate Limiting and Sliding-Window Algorithms}
+Edge gateways serving thousands of autonomous nodes must defend against distributed denial-of-service (DDoS) traffic and malfunctioning hardware babbling. Classic rate-limiting algorithms include:
+\begin{itemize}
+    \item \textbf{Token Bucket and Leaky Bucket:} Effective for smoothing traffic bursts, but poor at enforcing strict sliding-window temporal bounds over arbitrary intervals.
+    \item \textbf{Fixed-Window Counters:} Highly efficient, but vulnerable to traffic doubling across window boundaries (e.g., admitting twice the limit if bursts occur at the end of window $N$ and the start of window $N+1$).
+    \item \textbf{Sliding-Window Log / Sorted Set:} By maintaining individual packet timestamps within a rolling time delta $[t - W, t]$, the sliding-window log guarantees exact rate enforcement regardless of burst alignment.
+\end{itemize}
+In distributed architectures where multiple gateway instances share rate-limiting state, Sanfilippo \cite{redis_ratelimit} demonstrated that Redis Sorted Sets (\texttt{ZSET}) executed atomically via server-side Lua scripts provide $O(\log N + M)$ sliding-window tracking while preventing race conditions between concurrent requests.
+
+\subsection{Data Privacy, PII Protection, and Regulatory Compliance}
+Regulatory frameworks, most prominently the European Union's General Data Protection Regulation (GDPR) \cite{gdpr2016} and the National Institute of Standards and Technology (NIST) Special Publication 800-122 \cite{nist_sp800_122}, mandate strict privacy-by-design principles for automated data processing systems. Under GDPR Article 25 and Article 32, organizations must implement technical and organizational measures to ensure that only personal data necessary for each specific purpose is processed.
+
+In sensor networks, spatial metadata (GPS latitude and longitude) and hardware identifiers (MAC addresses) constitute Personally Identifiable Information (PII) when they can be correlated with individuals or property boundaries \cite{krumm2009survey}. Krumm demonstrated that spatial trajectories could identify an individual's residence and workplace with over 85\% accuracy using simple clustering algorithms. Consequently, anonymization pipelines must strip spatial and device metadata at the edge before data reaches long-term municipal persistence.
+
+\subsection{Time-Series Persistence and Hypertable Partitioning}
+Relational database management systems (RDBMS) historically struggle with the write throughput demands of high-frequency IoT sensor telemetry. Traditional B-tree indexes degrade severely as tables grow beyond available RAM, resulting in random disk I/O during index updates.
+
+TimescaleDB \cite{timescaledb_paper} addresses this limitation by introducing \emph{hypertables}---an abstraction that automatically partitions time-series tables across configurable temporal chunks (e.g., 1-day intervals). By ensuring that active chunk indexes fit entirely within memory, hypertables maintain consistent insert throughput exceeding 100,000 writes/second while retaining full SQL query compatibility, declarative foreign keys, and transactional relational integrity.
+
+\subsection{Resilience Patterns: Circuit Breaker and Fail-Closed Security}
+In high-throughput microservices, downstream storage degradation can rapidly exhaust upstream connection pools and worker threads. Nygard's foundational work on software stability \cite{nygard2018release} formalized the \textbf{Circuit Breaker} pattern, which transitions through three states: \texttt{CLOSED} (normal operation), \texttt{OPEN} (tripped; calls fail fast without hitting the degraded resource), and \texttt{HALF-OPEN} (probing connectivity before full recovery).
+
+Complementing the circuit breaker is the security principle of \textbf{Fail-Closed (Fail-Secure)} \cite{saltzer1975protection}. When a security component encounters an unexpected runtime fault, it must refuse access and discard data rather than allowing uninspected packets to proceed to storage.

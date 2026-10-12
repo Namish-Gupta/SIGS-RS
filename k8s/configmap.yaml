@@ -16,7 +16,12 @@ metadata:
     app.kubernetes.io/component: gateway
 data:
   # ── Application ────────────────────────────────────────────────────────────
-  APP_ENV: "production"
+  # For internal cluster simulation and testing (SRS REQ-SF-1), use 'staging'.
+  # For live production deployment, change APP_ENV to 'production' and ensure:
+  #   DATABASE_SSL_MODE: "verify-full" (SRS REQ-SE-3)
+  #   MQTT_USE_TLS: "true" (SRS REQ-TI-1, REQ-SE-1)
+  #   MQTT_BROKER_PORT: "8883" (SRS REQ-TI-1)
+  APP_ENV: "staging"
   APP_HOST: "0.0.0.0"
   APP_PORT: "8000"
   DEBUG: "false"

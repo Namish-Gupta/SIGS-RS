@@ -1,0 +1,132 @@
+\section{Implementation Code Listings and Deployment Artifacts}
+
+This appendix presents key implementation excerpts, database schemas, and operational commands central to the security, privacy, and reliability guarantees of SIGS-RS.
+
+\subsection{Fail-Secure Privacy Anonymizer Implementation}
+Listing~\ref{lst:anonymizer_impl} illustrates the core anonymization method from \texttt{src/sigs\_rs/middleware/anonymizer.py}, showcasing deep copying, recursive PII stripping, post-sanitization residual assertions, and fail-secure exception handling (\texttt{REQ-PA-1}, \texttt{REQ-PA-4}).
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.95\linewidth}
+\begin{verbatim}
+class PrivacyAnonymizer:
+    def anonymize(self, packet: RawTelemetryPacket) -> SanitizedTelemetryPacket:
+        sensor_id = getattr(packet, "sensor_id", "<unknown>")
+        try:
+            if not isinstance(packet, RawTelemetryPacket):
+                raise TypeError("expected a verified RawTelemetryPacket")
+
+            # Work from a detached copy: failed mask never alters raw packet
+            raw = deepcopy(packet.model_dump())
+            self._strip_pii(raw, self._pii_fields)
+            self._assert_no_pii(raw, self._pii_fields)
+
+            # Whitelist only fields present on safe output type
+            sanitized_fields = {
+                k: raw[k] for k in SanitizedTelemetryPacket.model_fields if k in raw
+            }
+            sanitized_fields["ingested_at"] = datetime.now(timezone.utc)
+            return SanitizedTelemetryPacket(**sanitized_fields)
+        except AnonymizerError:
+            raise
+        except Exception as exc:
+            raise AnonymizerError(
+                f"Masking failed for sensor '{sensor_id}': {exc}"
+            ) from exc
+
+    @staticmethod
+    def _strip_pii(data: Any, pii_fields: list[str]) -> None:
+        if isinstance(data, dict):
+            targets_lower = {f.lower() for f in pii_fields}
+            keys_to_remove = [k for k in list(data.keys()) if k.lower() in targets_lower]
+            for field in keys_to_remove:
+                data.pop(field, None)
+            for value in data.values():
+                PrivacyAnonymizer._strip_pii(value, pii_fields)
+        elif isinstance(data, list):
+            for value in data:
+                PrivacyAnonymizer._strip_pii(value, pii_fields)
+\end{verbatim}
+\end{minipage}
+\caption{Fail-Secure Privacy Anonymizer Logic (\texttt{anonymizer.py})}
+\label{lst:anonymizer_impl}
+\end{figure}
+
+\subsection{Database Schema and Immutable Audit Trigger}
+Listing~\ref{lst:database_schema_sql} illustrates the PostgreSQL/TimescaleDB schema definition in \texttt{schema.sql}, demonstrating daily chunk hypertable creation for sanitized readings and PL/pgSQL trigger enforcement preventing \texttt{UPDATE} or \texttt{DELETE} tampering on the audit log (\texttt{REQ-PA-3}, \texttt{REQ-SE-4}).
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.95\linewidth}
+\begin{verbatim}
+-- Create TimescaleDB hypertable for sanitized readings
+CREATE TABLE IF NOT EXISTS telemetry.sanitized_readings (
+    id              BIGSERIAL,
+    ts              TIMESTAMPTZ      NOT NULL,
+    ingested_at     TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+    sensor_id       VARCHAR(64)      NOT NULL,
+    resource_type   VARCHAR(32)      NOT NULL,
+    value           DOUBLE PRECISION NOT NULL,
+    unit            VARCHAR(32)      NOT NULL,
+    metadata        JSONB,
+    PRIMARY KEY (id, ts)
+);
+
+SELECT create_hypertable(
+    'telemetry.sanitized_readings', 'ts',
+    if_not_exists => TRUE, chunk_time_interval => INTERVAL '1 day'
+);
+
+-- Immutable security audit log table
+CREATE TABLE IF NOT EXISTS audit.security_log (
+    id          BIGSERIAL        PRIMARY KEY,
+    ts          TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+    event_type  VARCHAR(64)      NOT NULL,
+    severity    VARCHAR(16)      NOT NULL DEFAULT 'INFO',
+    sensor_id   VARCHAR(64),
+    user_id     VARCHAR(128),
+    detail      JSONB            NOT NULL DEFAULT '{}',
+    ip_address  VARCHAR(45)
+);
+
+-- PL/pgSQL trigger blocking modification or deletion (SRS REQ-SE-4)
+CREATE OR REPLACE FUNCTION audit.prevent_tampering()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'audit.security_log is immutable: UPDATE and DELETE prohibited';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_audit_immutable
+    BEFORE UPDATE OR DELETE ON audit.security_log
+    FOR EACH ROW
+    EXECUTE FUNCTION audit.prevent_tampering();
+\end{verbatim}
+\end{minipage}
+\caption{PostgreSQL TimescaleDB Hypertable and Immutable Audit Trigger Schema}
+\label{lst:database_schema_sql}
+\end{figure}
+
+\subsection{Selected System Commands and Run Instructions}
+\begin{itemize}
+    \item \textbf{Execute Hermetic Live Demonstration:}
+\begin{verbatim}
+.venv/bin/python -m demo.run_live_demo
+\end{verbatim}
+    \item \textbf{Run Complete Automated Verification Suite (580 Tests):}
+\begin{verbatim}
+.venv/bin/pytest tests/unit/ tests/integration/ tests/benchmarks/ -v
+\end{verbatim}
+    \item \textbf{Execute Regression Invariant Verification (Phase 16 Hardening):}
+\begin{verbatim}
+.venv/bin/pytest tests/unit/test_phase16_audit_hardening.py -v
+\end{verbatim}
+    \item \textbf{Start Standalone Local Demo Server (Port 8000):}
+\begin{verbatim}
+.venv/bin/python -m demo.demo_server
+\end{verbatim}
+    \item \textbf{Execute Local Performance Microbenchmarks (Stages 0--2):}
+\begin{verbatim}
+.venv/bin/python -m benchmarks.cli --suite all --stages 0,1,2
+\end{verbatim}
+\end{itemize}

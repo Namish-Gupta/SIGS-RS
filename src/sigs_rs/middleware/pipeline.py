@@ -50,6 +50,8 @@ class MiddlewarePipeline:
         batch_size: int = 100,
         flush_interval_seconds: float = 0.05,
         metrics: "MetricsCollector | None" = None,
+        compliance_check: Any = None,
+        fail_closed_check: Any = None,
     ) -> None:
         self._queue = queue
         self._inspector = inspector
@@ -60,6 +62,8 @@ class MiddlewarePipeline:
         self._batch_size = max(1, batch_size)
         self._flush_interval = max(0.001, flush_interval_seconds)
         self._metrics = metrics or get_metrics()
+        self._compliance_check = compliance_check
+        self._fail_closed_check = fail_closed_check
         self._running = False
         self._processed = 0
         self._sanitized = 0
@@ -115,6 +119,14 @@ class MiddlewarePipeline:
         Malicious or invalid packets are dropped individually without causing
         valid packets in the same batch to be dropped.
         """
+        if self._compliance_check and self._compliance_check():
+            logger.warning("Pipeline dropped batch: compliance lockout active (SRS BR-3).")
+            return False
+
+        if self._fail_closed_check and self._fail_closed_check():
+            logger.warning("Pipeline dropped batch: fail-closed state active (SRS REQ-SF-3).")
+            return False
+
         batch_t0 = time.monotonic()
         sanitized_batch = []
         for packet in raw_batch:
@@ -139,24 +151,21 @@ class MiddlewarePipeline:
             except AnonymizerError as exc:
                 self._metrics.record_packet_dropped_anonymization()
                 if self._audit:
-                    await self._audit.log(
-                        AuditEvent.ANONYMIZER_FAIL_SECURE,
-                        severity="CRITICAL",
-                        sensor_id=getattr(packet, "sensor_id", "<unknown>"),
-                        detail={"reason": str(exc)},
-                    )
+                    try:
+                        await self._audit.log(
+                            AuditEvent.ANONYMIZER_FAIL_SECURE,
+                            severity="CRITICAL",
+                            sensor_id=getattr(packet, "sensor_id", "<unknown>"),
+                            detail={"reason": str(exc)},
+                        )
+                    except Exception as audit_exc:
+                        logger.error("Audit log failed during anonymizer failure: %s", audit_exc)
                 logger.critical(
                     "Catastrophic anonymization failure for sensor %s; FAILING CLOSED.",
                     getattr(packet, "sensor_id", "<unknown>"),
                 )
                 # Fail closed: do not continue. Stop the routing path.
                 self._running = False
-
-                # Signal the rest of the application
-                import fastapi
-                for obj in [self._repo, self._inspector]: # Try to find app state
-                    pass # Not easy to get app from pipeline, let's just crash the pipeline.
-
                 raise RuntimeError(f"Fail-closed: Privacy Anonymizer failure: {exc}") from exc
             finally:
                 self._metrics.record_anonymizer_latency(time.monotonic() - anon_t0)
@@ -182,6 +191,18 @@ class MiddlewarePipeline:
                 "Circuit breaker open; %d sanitized packet(s) dropped.",
                 len(sanitized_batch),
             )
+            if self._audit:
+                try:
+                    await self._audit.log(
+                        AuditEvent.CIRCUIT_BREAKER_TRIPPED,
+                        severity="WARN",
+                        detail={
+                            "dropped_packets": len(sanitized_batch),
+                            "reason": "Circuit breaker open — dropped sanitized packets before persistence.",
+                        },
+                    )
+                except Exception as exc:
+                    logger.error("Audit log failed during circuit breaker drop: %s", exc)
             return False
         except Exception as exc:
             logger.error("Database persistence failed: %s", exc)

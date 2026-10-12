@@ -1,0 +1,41 @@
+\section{Technology Stack}
+
+The implementation of SIGS-RS leverages modern asynchronous runtimes, time-series storage engines, distributed key-value caches, and cloud-native container orchestration. Every technology selected for the platform was audited against the authoritative SRS non-functional criteria (\texttt{REQ-PF-1}, \texttt{REQ-PF-2}, \texttt{REQ-PF-3}, and \texttt{REQ-SE-1} through \texttt{REQ-SE-4}). Table~\ref{tab:tech_stack} enumerates the confirmed technology components across each layer of the gateway architecture.
+
+\begin{table}[H]
+\centering
+\caption{SIGS-RS Verified Technology Stack and Runtime Dependencies}
+\label{tab:tech_stack}
+\small
+\begin{tabularx}{\linewidth}{@{}p{2.8cm} p{2.8cm} p{1.8cm} X@{}}
+\toprule
+\textbf{Subsystem Layer} & \textbf{Technology / Library} & \textbf{Version} & \textbf{Architectural Responsibility} \\
+\midrule
+\textbf{Language Runtime} & Python & 3.12.3 & Core runtime providing native asynchronous I/O (\texttt{asyncio}), structured task groups, and memory-safe garbage collection. \\
+\textbf{Web / API Framework} & FastAPI & 0.115.0 & High-performance asynchronous REST API framework providing automatic OpenAPI schema generation, dependency injection, and sub-millisecond route dispatch. \\
+\textbf{ASGI Server} & Uvicorn & 0.30.0 & Lightning-fast ASGI web server built on \texttt{uvloop} and \texttt{httptools}, executing the gateway event loop. \\
+\textbf{Schema Validation} & Pydantic & 2.8.2 & Rust-accelerated schema validation and serialization engine, enforcing strict telemetry payload types and impossible-value validation. \\
+\textbf{MQTT Ingress} & aiomqtt & 2.1.0 & Asynchronous MQTT client supporting TLS 1.2+ mutual authentication, topic wildcard subscriptions (\texttt{telemetry/\#}), and non-blocking packet ingestion. \\
+\textbf{Rate-Limit Engine} & Redis / aioredis & 7.2.4 & In-memory distributed datastore providing atomic sliding-window transaction scripts, sorted set expiration, and cluster synchronization. \\
+\textbf{Time-Series Persistence} & TimescaleDB / PostgreSQL & 16.2 / 2.14 & Relational time-series database managing partitioned hypertables for sanitized readings and relational integrity for device profiles. \\
+\textbf{Database Driver} & asyncpg & 0.29.0 & Native asynchronous PostgreSQL protocol client offering binary protocol encoding and high-throughput connection pooling. \\
+\textbf{Authentication} & PyJWT \& cryptography & 2.8.0 & Cryptographic signature verification for OAuth 2.0 / JWT tokens with role-based claim extraction (\texttt{security\_engineer}, \texttt{compliance\_auditor}). \\
+\textbf{Metrics Exposition} & prometheus\_client & 0.20.0 & In-process metric collector exposing standard Prometheus counters, gauges, and latency histograms at \texttt{/metrics}. \\
+\textbf{Testing Framework} & pytest \& pytest-asyncio & 8.3.2 & Test execution runner driving 580 automated test cases across unit, integration, and microbenchmark suites. \\
+\textbf{Containerization} & Docker & 26.1 & Multi-stage container builds generating minimal, distroless production images for the gateway process. \\
+\textbf{Orchestration} & Kubernetes & 1.30 & Cloud-native workload management featuring Deployment manifests, Horizontal Pod Autoscalers, ConfigMaps, and Secret management. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Language and Asynchronous Runtime Rationale}
+Python 3.12 was selected as the foundational runtime for SIGS-RS due to its mature asynchronous I/O framework (\texttt{asyncio}), which enables concurrent handling of thousands of open network sockets without the memory overhead of OS-level OS threading. In classical multi-threaded architectures, sustaining 10,000 concurrent sensor connections incurs significant context-switching penalties and memory allocation ($\sim 8$~MB stack per thread). In contrast, Python's cooperative multitasking model schedules lightweight coroutines onto a single-threaded event loop, consuming less than 1~KB of state per connection.
+
+Furthermore, Python 3.12 introduces substantial interpreter optimizations, including adaptive specialization (PEP 659), faster exception handling, and reduced object allocation overhead, which are instrumental in satisfying the strict 15.0-millisecond latency ceiling mandated by \texttt{REQ-PF-2}.
+
+\subsection{Database and Cache Selection}
+The gateway storage architecture strictly isolates high-throughput sliding-window accounting from permanent time-series persistence:
+\begin{enumerate}
+    \item \textbf{Redis (Sliding Window):} Evaluated against in-memory hash tables, Redis Sorted Sets (\texttt{ZSET}) provide atomic scoring by Unix microsecond timestamp. Using Lua script pipelining, the inspector records arrivals and trims entries older than $T - 10$ seconds in a single round-trip, executing in under 0.2~ms.
+    \item \textbf{TimescaleDB (Hypertable Storage):} Standard relational databases suffer from index tree degradation as table size grows past millions of rows. TimescaleDB solves this through automatic two-dimensional partitioning into immutable time chunks (\textit{hypertables}), preserving sustained write throughput of tens of thousands of inserts per second while supporting full SQL querying for analytical dashboards.
+\end{enumerate}

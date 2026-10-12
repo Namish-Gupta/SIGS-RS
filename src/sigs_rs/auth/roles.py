@@ -37,3 +37,7 @@ def is_qa_tester(user: UserInfo) -> bool:
 
 def is_devops(user: UserInfo) -> bool:
     return user.role == Role.DEVOPS
+
+
+def is_compliance_auditor(user: UserInfo) -> bool:
+    return user.role == Role.COMPLIANCE_AUDITOR

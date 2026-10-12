@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ── Re-export telemetry domain types (backward-compat aliases) ────────────────
 from sigs_rs.telemetry.models import (  # noqa: F401  (re-exported)
@@ -61,12 +61,40 @@ class AnonymizerConfig(BaseModel):
     """Current Privacy Anonymizer PII field list."""
     pii_fields: list[str] = Field(..., min_length=1)
 
+    @field_validator("pii_fields")
+    @classmethod
+    def _validate_fields(cls, v: list[str]) -> list[str]:
+        cleaned = [f.strip() for f in v if isinstance(f, str) and f.strip()]
+        if not cleaned or len(cleaned) != len(v):
+            raise ValueError("All pii_fields must be non-empty strings.")
+        return cleaned
+
 
 class ConfigUpdateResponse(BaseModel):
     updated: bool
     message: str
     updated_by: str | None = None
     updated_at: datetime | None = None
+
+
+class ComplianceGuidelineRevisionRequest(BaseModel):
+    """Compliance guideline revision request (SRS BR-3)."""
+    guideline_version: str = Field(..., min_length=1, max_length=32, description="Revised guideline version.")
+    revision_reason: str = Field(..., min_length=1, max_length=1000, description="Reason for revising guidelines.")
+
+
+class ComplianceAuditRequest(BaseModel):
+    """Compliance audit signoff request (SRS BR-3)."""
+    guideline_version: str = Field(..., min_length=1, description="Audited guidelines version.")
+    audit_notes: str = Field(..., min_length=1, description="Audit verification rationale.")
+
+
+class ComplianceStatusResponse(BaseModel):
+    """Current compliance guideline and lockout status (SRS REQ-PA-2, BR-3)."""
+    guideline_version: str
+    lockout_active: bool
+    audited: bool
+    message: str
 
 
 # ─── Audit Log API ────────────────────────────────────────────────────────────

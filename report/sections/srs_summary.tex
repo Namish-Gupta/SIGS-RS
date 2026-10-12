@@ -1,0 +1,110 @@
+\section{Software Requirements Specification (SRS)}
+
+\subsection{Authoritative Specification Baseline}
+The authoritative baseline governing the SIGS-RS project is the formal Software Requirements Specification (SRS) maintained in \texttt{docs/SRS.tex} and compiled into \texttt{docs/SRS.pdf} (Version 1.0, approved July 17, 2026). Authored according to the Karl E. Wiegers IEEE 830 specification methodology \cite{wiegers_srs}, the SRS defines the functional scope, non-functional constraints, external interface contracts, safety mechanisms, and business governance rules for the gateway simulation.
+
+\subsection{User Classes and Characteristics}
+The SRS specifies five distinct user roles operating the gateway management interfaces:
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Security Engineer:} Lead security operator possessing elevated privileges to configure sliding-window thresholds, update PII sanitization field lists, modify impossible-value physical limits, and review security audit logs (SRS BR-1).
+    \item \textbf{Compliance Auditor:} Regulatory official responsible for evaluating data anonymization pipelines against municipal privacy mandates and granting formal audit signoff to lift BR-3 simulation lockouts.
+    \item \textbf{QA Tester:} Quality assurance engineer exercising simulation load profiles, hostile security scenarios, and verifying pipeline drop metrics.
+    \item \textbf{Backend Developer:} Platform engineer maintaining database schemas, persistence repositories, and middleware pipeline components.
+    \item \textbf{DevOps / Infrastructure Engineer:} Operational administrator managing Kubernetes manifests, horizontal pod autoscalers, Prometheus metric scrapers, and persistent volume configurations.
+\end{enumerate}
+
+\subsection{Functional Requirements Breakdown}
+The core functional requirements of SIGS-RS are partitioned across three primary subsystems:
+
+\subsubsection{Telemetry Ingestion Subsystem}
+\begin{itemize}
+    \item \textbf{REQ-TI-1 (Transport Security):} The system shall accept incoming sensor telemetry exclusively via MQTT over TLS 1.2+ on port 8883 in production deployments. Unencrypted connections on port 1883 are prohibited in production mode.
+    \item \textbf{REQ-TI-2 (Schema Validation):} The system shall parse incoming payloads formatted strictly as JSON conforming to the Community Sensor Grid API schema, validating resource types (\texttt{water}, \texttt{energy}, \texttt{air\_quality}), timestamps, and measurement units.
+    \item \textbf{REQ-TI-3 (Size Limit):} The system shall reject and drop any telemetry packet exceeding 512~KB (524,288 bytes) prior to full JSON parsing to prevent memory exhaustion attacks.
+    \item \textbf{REQ-TI-4 (Ingestion Queue):} The system shall place validated, parsed packets into a bounded in-memory buffer (\texttt{IngestionQueue}) for asynchronous, sequential processing by the Anomalous Packet Inspector.
+\end{itemize}
+
+\subsubsection{Anomalous Packet Inspector Subsystem}
+\begin{itemize}
+    \item \textbf{REQ-API-1 (Sliding-Window Tracking):} The system shall track the packet arrival rate of each sensor using a rolling sliding-window log algorithm over a default window of 10 seconds.
+    \item \textbf{REQ-API-2 (Rate-Limiting Drop):} The system shall reject and drop any packet received from a sensor whose packet count exceeds 50 packets within the 10-second rolling window.
+    \item \textbf{REQ-API-3 (Impossible-Value Detection):} The system shall evaluate sensor readings against physical and environmental bounds: water flow must be $\ge 0.0\text{ L/min}$ with pH between 0.0 and 14.0; energy consumption must be $\ge 0.0\text{ kWh}$ with power factor $\le 1.0$; air quality index must be between 0.0 and 500.0~AQI with humidity $\le 100\%$. Any packet violating these bounds shall be dropped.
+    \item \textbf{REQ-API-4 (Inspector Latency):} Sliding-window evaluation and physical validation shall complete in under 15.0 milliseconds per packet.
+\end{itemize}
+
+\subsubsection{Privacy Anonymizer Subsystem}
+\begin{itemize}
+    \item \textbf{REQ-PA-1 (PII Stripping):} The system shall permanently remove all geographic coordinates (\texttt{latitude}, \texttt{longitude}, \texttt{lat}, \texttt{lon}, \texttt{geo}) and hardware identifiers (\texttt{mac\_address}, \texttt{device\_id}) from verified telemetry packets prior to database insertion.
+    \item \textbf{REQ-PA-2 (Compliance Maintenance):} The Anonymizer shall maintain active Data Anonymization and Privacy Compliance Guidelines (default version: 1.0.0).
+    \item \textbf{REQ-PA-3 (Relational Compatibility):} Sanitized packets shall be formatted for insertion into PostgreSQL and TimescaleDB hypertable schemas.
+    \item \textbf{REQ-PA-4 (Fail-Secure Redaction):} If any anonymization operation encounters an error or fails to remove a configured PII field, the packet shall be discarded, and an audit event shall be raised.
+\end{itemize}
+
+\subsection{Non-Functional and Safety Requirements}
+\begin{itemize}
+    \item \textbf{REQ-PF-1 (Throughput):} The system shall sustain processing of up to 50,000 telemetry packets/second across up to 10,000 concurrent virtual sensors.
+    \item \textbf{REQ-PF-2 (Middleware Latency):} Combined Inspector and Anonymizer processing latency shall be under 15.0 milliseconds per packet.
+    \item \textbf{REQ-PF-3 (Memory Bound):} The simulation engine shall operate within 24~GB active RAM on a 32~GB host system.
+    \item \textbf{REQ-SE-1 (Encryption):} All external MQTT traffic shall use TLS 1.2+ with forward secrecy.
+    \item \textbf{REQ-SE-2 (Authentication):} All management REST API endpoints shall require OAuth 2.0 / JWT Bearer tokens with Role-Based Access Control (RBAC).
+    \item \textbf{REQ-SE-4 (Immutable Audit):} Security audit logs shall be written to an immutable append-only datastore (\texttt{audit.security\_log}) protected against tampering.
+    \item \textbf{REQ-SF-1 (Production Database Guard):} The system shall reject startup configurations pointing to production database connection strings in non-production deployment environments.
+    \item \textbf{REQ-SF-2 (Persistence Circuit Breaker):} The gateway shall monitor database write latency. If latency exceeds 2,000~ms, the circuit breaker shall transition to \texttt{OPEN}, suspending telemetry ingestion.
+    \item \textbf{REQ-QA-1 (Kubernetes Liveness Self-Healing):} On critical pipeline failure, the gateway shall fail closed, causing the \texttt{/health} probe to return HTTP 503, triggering Kubernetes pod restart within 30 seconds.
+\end{itemize}
+
+\subsection{Business Rules (BR-1 through BR-4)}
+\begin{itemize}
+    \item \textbf{BR-1 (Security Engineer Privilege):} Only authorized personnel with the \texttt{security\_engineer} role may alter sliding-window thresholds or the list of stripped PII fields.
+    \item \textbf{BR-2 (Simulation Safety Ceiling):} The simulation engine shall reject sensor count requests $> 10,000$ or offered rates $> 50,000$ pkts/s to avoid host memory saturation.
+    \item \textbf{BR-3 (Compliance Audit Lockout):} Any revision to privacy compliance guidelines shall immediately suspend all simulation testing until formal audit signoff is granted by an authorized Compliance Auditor.
+    \item \textbf{BR-4 (Audit Attribution):} All threshold modifications, guideline revisions, and audit signoffs shall be permanently recorded with the user identity and timestamp.
+\end{itemize}
+
+\subsection{SRS Requirements Traceability Matrix}
+Table~\ref{tab:traceability_matrix} presents the formal traceability matrix mapping each authoritative SRS requirement to its implementation source modules, automated test suites, and verified compliance status.
+
+\begin{table}[H]
+\centering
+\caption{Comprehensive SRS Compliance and Verification Traceability Matrix}
+\label{tab:traceability_matrix}
+\scriptsize
+\begin{tabularx}{\linewidth}{@{}l p{1.6cm} p{2.4cm} p{2.2cm} p{2.2cm} p{2.5cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Category} & \textbf{Requirement Summary} & \textbf{Implementation} & \textbf{Automated Tests} & \textbf{Compliance Status} \\
+\midrule
+\textbf{REQ-TI-1} & Ingestion & Port 8883 MQTTS with TLS 1.2+ & \texttt{config.py}, \texttt{mqtt\_sub.py} & \texttt{test\_mqtt\_subscription.py} & \textbf{Partially Verified}$^1$ \\
+\textbf{REQ-TI-2} & Ingestion & JSON schema validation & \texttt{validator.py}, \texttt{models.py} & \texttt{test\_telemetry\_validator.py} & \textbf{VERIFIED} \\
+\textbf{REQ-TI-3} & Ingestion & 512 KB payload size ceiling & \texttt{mqtt\_sub.py}, \texttt{main.py} & \texttt{test\_telemetry\_validator.py} & \textbf{VERIFIED} \\
+\textbf{REQ-TI-4} & Ingestion & In-memory queue buffer & \texttt{buffer.py}, \texttt{mqtt\_sub.py} & \texttt{test\_failures.py} & \textbf{VERIFIED} \\
+\textbf{REQ-API-1} & Inspector & Sliding-window tracking (10s) & \texttt{sliding\_window.py} & \texttt{test\_sliding\_window.py} & \textbf{VERIFIED} \\
+\textbf{REQ-API-2} & Inspector & Drop $> 50$ pkts / 10s & \texttt{sliding\_window.py}, \texttt{inspector.py} & \texttt{test\_inspector.py} & \textbf{VERIFIED} \\
+\textbf{REQ-API-3} & Inspector & Impossible physical values & \texttt{payload\_validator.py} & \texttt{test\_payload\_validator.py} & \textbf{VERIFIED} \\
+\textbf{REQ-API-4} & Inspector & Inspector latency $< 15$ ms & \texttt{inspector.py} & \texttt{test\_bench\_inspector.py} & \textbf{VERIFIED} \\
+\textbf{REQ-PA-1} & Anonymizer & Strip lat, lon, mac, device & \texttt{anonymizer.py} & \texttt{test\_anonymizer.py} & \textbf{VERIFIED} \\
+\textbf{REQ-PA-2} & Anonymizer & Compliance guideline tracking & \texttt{config.py}, \texttt{config\_api.py} & \texttt{test\_compliance\_lockout.py} & \textbf{VERIFIED} \\
+\textbf{REQ-PA-3} & Anonymizer & TimescaleDB schema mapping & \texttt{schema.sql}, \texttt{repository.py} & \texttt{test\_persistence.py} & \textbf{VERIFIED} \\
+\textbf{REQ-PA-4} & Anonymizer & Fail-secure redaction & \texttt{anonymizer.py} & \texttt{test\_anonymizer.py} & \textbf{VERIFIED} \\
+\textbf{REQ-PF-1} & Performance & 50,000 pkts/s across 10k sensors & \texttt{benchmarks/cli.py} & \texttt{test\_benchmark\_smoke.py} & \textbf{Not Verified}$^2$ \\
+\textbf{REQ-PF-2} & Performance & Middleware latency $< 15$ ms & \texttt{pipeline.py} & \texttt{benchmark-report.md} & \textbf{VERIFIED} ($p99 < 0.50$ ms) \\
+\textbf{REQ-PF-3} & Performance & Memory bound $< 24$ GB RAM & \texttt{safety.py} & \texttt{benchmark-report.md} & \textbf{Bounded Localy} ($< 150$ MiB) \\
+\textbf{REQ-SE-1} & Security & TLS 1.2+ encryption on port 8883 & \texttt{mqtt\_sub.py} & \texttt{test\_mqtt\_ingestion.py} & \textbf{Partially Verified}$^1$ \\
+\textbf{REQ-SE-2} & Security & OAuth 2.0 / JWT RBAC auth & \texttt{jwt\_handler.py}, \texttt{dependencies.py} & \texttt{test\_auth.py} & \textbf{VERIFIED} \\
+\textbf{REQ-SE-4} & Security & Immutable audit log sink & \texttt{audit\_logger.py}, \texttt{schema.sql} & \texttt{test\_phase16\_audit\_hardening.py} & \textbf{Verified at DB Level}$^3$ \\
+\textbf{REQ-SF-1} & Safety & Reject production DB in dev & \texttt{config.py} & \texttt{test\_config.py} & \textbf{VERIFIED} \\
+\textbf{REQ-SF-2} & Safety & Persistence circuit breaker & \texttt{circuit\_breaker.py} & \texttt{test\_circuit\_breaker.py} & \textbf{VERIFIED} \\
+\textbf{REQ-QA-1} & Reliability & K8s liveness restart $< 30$ s & \texttt{health.py}, \texttt{deployment.yaml} & \texttt{test\_health.py} & \textbf{VERIFIED} \\
+\textbf{BR-1} & Business & Security Engineer privilege & \texttt{dependencies.py}, \texttt{roles.py} & \texttt{test\_config\_api.py} & \textbf{VERIFIED} \\
+\textbf{BR-2} & Business & Simulation safety caps & \texttt{simulator/engine.py} & \texttt{test\_simulator.py} & \textbf{VERIFIED} \\
+\textbf{BR-3} & Business & Compliance lockout & \texttt{config\_service.py}, \texttt{main.py} & \texttt{test\_phase16\_audit\_hardening.py} & \textbf{Partially Verified}$^4$ \\
+\textbf{BR-4} & Business & Audit attribution of updates & \texttt{audit\_logger.py}, \texttt{config\_api.py} & \texttt{test\_config\_api.py} & \textbf{VERIFIED} \\
+\bottomrule
+\end{tabularx}
+\begin{flushleft}
+\scriptsize
+$^1$ Local TLS context and port validation verified; production broker handshake requires external staging infrastructure.\\
+$^2$ Production cluster requirement (16 vCPUs, 32 GB RAM per SRS §3.2); local single-core achieved 3,820 pkts/s persisted.\\
+$^3$ Enforced via PostgreSQL trigger \texttt{trg\_audit\_immutable}; does not constitute hardware WORM storage.\\
+$^4$ Immediate suspension on local instance; up to 1.0-second convergence window across distributed cluster via database polling.
+\end{flushleft}
+\end{table}

@@ -1,0 +1,68 @@
+\section{Working Modules}
+
+The SIGS-RS codebase is organized into modular, loosely coupled packages under the canonical namespace \texttt{sigs\_rs}, complemented by autonomous simulation and benchmarking packages. Each module encapsulates a well-defined domain boundary, exposing strongly typed interfaces via Pydantic schemas and standard Python coroutines. Table~\ref{tab:working_modules} details the functional responsibilities, source paths, and external interfaces of each subsystem.
+
+\begin{table}[H]
+\centering
+\caption{SIGS-RS Functional Subsystems and Component Breakdown}
+\label{tab:working_modules}
+\small
+\begin{tabularx}{\linewidth}{@{}p{3.2cm} p{3.5cm} X@{}}
+\toprule
+\textbf{Subsystem Name} & \textbf{Module Path} & \textbf{Key Responsibilities \& Interfaces} \\
+\midrule
+\textbf{Ingestion Subsystem} & \texttt{sigs\_rs.ingestion} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{mqtt\_sub.py}: Manages TLS 1.2+ connection on port 8883, topic subscription (\texttt{telemetry/\#}), size checks ($\le 512$~KB).
+    \item \texttt{buffer.py}: Thread-safe bounded \texttt{asyncio.Queue} (\texttt{IngestionQueue}) with non-blocking enqueue and capacity backpressure.
+    \item \texttt{http\_ingest.py}: REST ingress handler for HTTP \texttt{POST /api/v1/telemetry}.
+\end{itemize} \\
+\midrule
+\textbf{Telemetry Validation} & \texttt{sigs\_rs.telemetry} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{models.py}: Defines Pydantic data schemas for water, energy, and air quality telemetry packets.
+    \item \texttt{validator.py}: Validates syntactic conformance, required attributes, timestamp formatting, and value types.
+\end{itemize} \\
+\midrule
+\textbf{Anomalous Inspector} & \texttt{sigs\_rs.middleware} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{sliding\_window.py}: Evaluates sensor-specific packet frequencies over rolling 10-second windows ($> 50$ pkts/10s threshold).
+    \item \texttt{payload\_validator.py}: Asserts physical realism (water flow $\ge 0$, pH $0-14$, power factor $\le 1.0$, AQI $0-500$).
+    \item \texttt{inspector.py}: Orchestrates rate and physical validation; dispatches drop events to audit sink.
+\end{itemize} \\
+\midrule
+\textbf{Privacy Anonymizer} & \texttt{sigs\_rs.middleware} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{anonymizer.py}: Irreversibly purges geographic coordinates (\texttt{lat}, \texttt{lon}, \texttt{geo}) and device hardware IDs (\texttt{mac\_address}). Fail-secure drop on missing keys.
+    \item \texttt{pipeline.py}: Chains Inspector and Anonymizer into a unified asynchronous coroutine pipe.
+\end{itemize} \\
+\midrule
+\textbf{Persistence \& Guard} & \texttt{sigs\_rs.persistence} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{database.py}: Manages \texttt{asyncpg} connection pool lifecycle and schema migrations.
+    \item \texttt{repository.py}: Executes batch hypertable insertions into \texttt{sanitized\_readings}.
+    \item \texttt{circuit\_breaker.py}: State machine tracking database write latency; trips to \texttt{OPEN} on $> 2,000$~ms delays.
+\end{itemize} \\
+\midrule
+\textbf{RBAC Authentication} & \texttt{sigs\_rs.auth} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{jwt\_handler.py}: Issues and decodes RS256/HS256 JWT tokens.
+    \item \texttt{dependencies.py}: FastAPI dependency verifying token signatures and asserting role claims.
+    \item \texttt{roles.py}: Defines role permissions for \texttt{security\_engineer} and \texttt{compliance\_auditor}.
+\end{itemize} \\
+\midrule
+\textbf{Governance \& Audit} & \texttt{sigs\_rs.management} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{config\_service.py}: Manages dynamic thresholds and enforces BR-3 compliance lockout on guideline updates.
+    \item \texttt{audit\_logger.py}: Writes structured security events to PostgreSQL trigger-protected audit table.
+    \item \texttt{health.py}: Evaluates deep system health across database, queue depth, and circuit breaker.
+\end{itemize} \\
+\midrule
+\textbf{Simulation Grid} & \texttt{simulator} & 
+\begin{itemize}[leftmargin=*,noitemsep,topsep=0pt]
+    \item \texttt{engine.py}: Spawns concurrent asynchronous virtual sensor tasks generating realistic resource traces.
+    \item \texttt{cli.py}: Provides CLI commands for starting simulation workloads subject to BR-2 bounds.
+\end{itemize} \\
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -99,12 +99,15 @@ class MQTTSubscriber:
     def __init__(
         self,
         settings: "Settings",
-        queue: "IngestionQueue",
+        queue: "IngestionQueue | None" = None,
         validator: "TelemetryValidator | None" = None,
         audit_logger: "AuditLogger | None" = None,
         reconnect_initial_interval: float = 1.0,
         reconnect_max_interval: float = 30.0,
         metrics: "MetricsCollector | None" = None,
+        circuit_breaker: Any = None,
+        fail_closed_check: Any = None,
+        compliance_check: Any = None,
     ) -> None:
         self._settings = settings
         self._queue = queue
@@ -113,6 +116,9 @@ class MQTTSubscriber:
         self._reconnect_initial_interval = reconnect_initial_interval
         self._reconnect_max_interval = reconnect_max_interval
         self._metrics = metrics or get_metrics()
+        self._circuit_breaker = circuit_breaker
+        self._fail_closed_check = fail_closed_check
+        self._compliance_check = compliance_check
 
         self._running: bool = False
         self._stop_requested: bool = False
@@ -296,9 +302,45 @@ class MQTTSubscriber:
         Silent drop on failure (SRS REQ-API-5): No rejection acknowledgement
         is returned to the client or published to the broker.
         """
+        topic = str(getattr(message, "topic", "unknown"))
+
+        # Gate 0: Circuit breaker, fail-closed & compliance lockout enforcement (SRS REQ-SF-2, REQ-SF-3, BR-3)
+        if self._stop_requested:
+            logger.warning("MQTT packet dropped: subscriber is stopping (SRS REQ-SF-2).")
+            return False
+
+        if self._circuit_breaker and getattr(self._circuit_breaker, "is_open", False):
+            logger.warning("MQTT packet dropped: circuit breaker is open (SRS REQ-SF-2).")
+            if self._audit:
+                try:
+                    await self._audit.log(
+                        AuditEvent.CIRCUIT_BREAKER_TRIPPED,
+                        severity="WARN",
+                        detail={"topic": topic, "reason": "Circuit breaker open — dropped incoming packet."},
+                    )
+                except Exception as exc:
+                    logger.error("Audit logging failed during CB drop: %s", exc)
+            return False
+
+        if self._compliance_check and self._compliance_check():
+            logger.warning("MQTT packet dropped: compliance lockout active (SRS BR-3).")
+            if self._audit:
+                try:
+                    await self._audit.log(
+                        AuditEvent.COMPLIANCE_LOCKOUT,
+                        severity="WARN",
+                        detail={"topic": topic, "reason": "Simulation testing suspended pending compliance audit (SRS BR-3)."},
+                    )
+                except Exception as exc:
+                    logger.error("Audit logging failed during compliance lockout drop: %s", exc)
+            return False
+
+        if self._fail_closed_check and self._fail_closed_check():
+            logger.warning("MQTT packet dropped: system is in fail-closed state (SRS REQ-SF-3).")
+            return False
+
         self._packets_received += 1
         self._metrics.record_packet_received()
-        topic = str(getattr(message, "topic", "unknown"))
         payload = getattr(message, "payload", b"")
 
         if isinstance(payload, str):
@@ -319,11 +361,14 @@ class MQTTSubscriber:
                 topic,
             )
             if self._audit:
-                await self._audit.log(
-                    AuditEvent.PACKET_DROPPED_OVERSIZED,
-                    severity="WARN",
-                    detail={"topic": topic, "size_bytes": len(raw_bytes)},
-                )
+                try:
+                    await self._audit.log(
+                        AuditEvent.PACKET_DROPPED_OVERSIZED,
+                        severity="WARN",
+                        detail={"topic": topic, "size_bytes": len(raw_bytes)},
+                    )
+                except Exception as exc:
+                    logger.error("Audit logging failed during oversized packet drop: %s", exc)
             return False  # Silent drop
 
         # 2. JSON & Schema validation (SRS REQ-TI-2)
@@ -338,11 +383,14 @@ class MQTTSubscriber:
                 exc,
             )
             if self._audit:
-                await self._audit.log(
-                    AuditEvent.PACKET_DROPPED_MALFORMED,
-                    severity="WARN",
-                    detail={"topic": topic, "reason": str(exc)},
-                )
+                try:
+                    await self._audit.log(
+                        AuditEvent.PACKET_DROPPED_MALFORMED,
+                        severity="WARN",
+                        detail={"topic": topic, "reason": str(exc)},
+                    )
+                except Exception as audit_exc:
+                    logger.error("Audit logging failed during malformed packet drop: %s", audit_exc)
             return False  # Silent drop
         except Exception as exc:
             self._packets_dropped_malformed += 1

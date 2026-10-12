@@ -1,0 +1,176 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand*\HyPL@Entry[1]{}
+\HyPL@Entry{0<</S/D>>}
+\HyPL@Entry{1<</S/r>>}
+\@writefile{toc}{\contentsline {section}{Abstract}{iv}{section*.1}\protected@file@percent }
+\HyPL@Entry{5<</S/D>>}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Background and Motivation}{1}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Problem Statement}{1}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Project Objectives}{2}{subsection.1.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.4}Scope and Delimitations}{2}{subsection.1.4}\protected@file@percent }
+\citation{oasis_mqtt5}
+\citation{rfc5246_tls}
+\citation{rfc8446_tls}
+\citation{granjal2015security}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.5}Report Organization}{3}{subsection.1.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Literature Survey / Related Works}{3}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}IoT Edge Ingestion and Transport Security}{3}{subsection.2.1}\protected@file@percent }
+\citation{redis_ratelimit}
+\citation{gdpr2016}
+\citation{nist_sp800_122}
+\citation{krumm2009survey}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Distributed Rate Limiting and Sliding-Window Algorithms}{4}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Data Privacy, PII Protection, and Regulatory Compliance}{4}{subsection.2.3}\protected@file@percent }
+\citation{timescaledb_paper}
+\citation{nygard2018release}
+\citation{saltzer1975protection}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Time-Series Persistence and Hypertable Partitioning}{5}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Resilience Patterns: Circuit Breaker and Fail-Closed Security}{5}{subsection.2.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Existing Work / System}{5}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Architecture of Traditional Municipal Telemetry Systems}{5}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Shortcomings and Inherent Vulnerabilities}{6}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Comparison Matrix: Existing Systems vs. Required Security Profile}{7}{subsection.3.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Comparison of Existing IoT Ingestion Systems and Required Architectural Profile}}{7}{table.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:existing_vs_required}{{1}{7}{Comparison of Existing IoT Ingestion Systems and Required Architectural Profile}{table.caption.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Proposed Work / System}{8}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Architectural Vision of SIGS-RS}{8}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}The Fundamental Security Invariant}{8}{subsection.4.2}\protected@file@percent }
+\newlabel{eq:invariant}{{1}{8}{The Fundamental Security Invariant}{equation.4.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Core Engineering Innovations}{9}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.1}Asynchronous Queue Buffering and Backpressure Handling}{9}{subsubsection.4.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.2}Two-Tier Sliding-Window Implementation}{9}{subsubsection.4.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.3}Automated Regulatory Compliance Lockout (SRS BR-3)}{9}{subsubsection.4.3.3}\protected@file@percent }
+\citation{wiegers_srs}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.4}Database-Enforced Audit Immutability (SRS REQ-SE-4)}{10}{subsubsection.4.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Verification Boundaries and Technical Disclosures}{10}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Software Requirements Specification (SRS)}{10}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Authoritative Specification Baseline}{10}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}User Classes and Characteristics}{11}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Functional Requirements Breakdown}{11}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.1}Telemetry Ingestion Subsystem}{11}{subsubsection.5.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.2}Anomalous Packet Inspector Subsystem}{12}{subsubsection.5.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.3}Privacy Anonymizer Subsystem}{12}{subsubsection.5.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Non-Functional and Safety Requirements}{13}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Business Rules (BR-1 through BR-4)}{13}{subsection.5.5}\protected@file@percent }
+\gdef \LT@i {\LT@entry 
+    {5}{49.81187pt}\LT@entry 
+    {1}{63.21504pt}\LT@entry 
+    {1}{71.75095pt}\LT@entry 
+    {1}{74.59596pt}\LT@entry 
+    {1}{80.28644pt}\LT@entry 
+    {4}{113.30763pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}SRS Requirements Traceability Matrix}{14}{subsection.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Comprehensive SRS Compliance and Verification Traceability Matrix}}{14}{table.2}\protected@file@percent }
+\newlabel{tab:traceability_matrix}{{2}{14}{Comprehensive SRS Compliance and Verification Traceability Matrix}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}System Design / Architecture of Proposed Work}{15}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Architectural Overview}{15}{subsection.6.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces SIGS-RS System Architecture Topology (Diagram 1)}}{16}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:system_architecture}{{1}{16}{SIGS-RS System Architecture Topology (Diagram 1)}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Ingestion Transport and Buffer Decoupling}{16}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Telemetry Processing Sequence}{16}{subsection.6.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Telemetry Processing Sequence and Drop Paths (Diagram 2)}}{17}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:telemetry_sequence}{{2}{17}{Telemetry Processing Sequence and Drop Paths (Diagram 2)}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Concurrency Lifecycle and Background Coroutines}{17}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Fail-Closed State Transitions}{17}{subsection.6.5}\protected@file@percent }
+\gdef \LT@ii {\LT@entry 
+    {1}{91.35826pt}\LT@entry 
+    {1}{108.73918pt}\LT@entry 
+    {1}{54.67912pt}\LT@entry 
+    {1}{198.19133pt}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Technology Stack}{19}{section.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces SIGS-RS Verified Technology Stack and Runtime Dependencies}}{19}{table.3}\protected@file@percent }
+\newlabel{tab:tech_stack}{{3}{19}{SIGS-RS Verified Technology Stack and Runtime Dependencies}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Language and Asynchronous Runtime Rationale}{20}{subsection.7.1}\protected@file@percent }
+\gdef \LT@iii {\LT@entry 
+    {1}{85.6678pt}\LT@entry 
+    {1}{103.04872pt}\LT@entry 
+    {1}{264.25137pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Database and Cache Selection}{21}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Working Modules}{21}{section.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces SIGS-RS Functional Subsystems and Component Breakdown}}{21}{table.4}\protected@file@percent }
+\newlabel{tab:working_modules}{{4}{21}{SIGS-RS Functional Subsystems and Component Breakdown}{table.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Description of Each Module}{23}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}Security Processing Pipeline Subsystem}{23}{subsection.9.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces SIGS-RS Multi-Stage Security and Privacy Pipeline (Diagram 3)}}{24}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:security_pipeline}{{3}{24}{SIGS-RS Multi-Stage Security and Privacy Pipeline (Diagram 3)}{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {9.1.1}Sliding-Window Frequency Control Algorithm}{25}{subsubsection.9.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {9.1.2}Physical Bound Consistency Verification}{25}{subsubsection.9.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Cloud-Native Kubernetes Deployment Architecture}{26}{subsection.9.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Cloud-Native Kubernetes Deployment Topology (Diagram 4)}}{26}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:deployment_architecture}{{4}{26}{Cloud-Native Kubernetes Deployment Topology (Diagram 4)}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Persistence Circuit Breaker State Machine}{26}{subsection.9.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.4}Security and Privacy Analysis}{27}{subsection.9.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {9.4.1}Threat Model and Attack Vectors}{27}{subsubsection.9.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {9.4.2}Defense-in-Depth Analysis}{27}{subsubsection.9.4.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Threat Mitigation and Defense-in-Depth Security Matrix}}{28}{table.caption.7}\protected@file@percent }
+\newlabel{tab:security_threat_matrix}{{5}{28}{Threat Mitigation and Defense-in-Depth Security Matrix}{table.caption.7}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {9.4.3}Compliance Lockout Synchronization Limitations}{28}{subsubsection.9.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {9.4.4}Audit Immutability Limitations}{29}{subsubsection.9.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Test Plan and Test Suite}{29}{section.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.1}Testing Philosophy and Strategy}{29}{subsection.10.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.2}Automated Test Suite Accounting}{30}{subsection.10.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Automated Verification Suite Accounting and Test Execution Summary}}{30}{table.caption.8}\protected@file@percent }
+\newlabel{tab:test_accounting}{{6}{30}{Automated Verification Suite Accounting and Test Execution Summary}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.3}Skip Rationale and Environmental Boundary}{30}{subsection.10.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.4}Representative Security and Invariant Test Cases}{30}{subsection.10.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Representative Security, Privacy, and Reliability Test Cases}}{31}{table.caption.9}\protected@file@percent }
+\newlabel{tab:representative_tests}{{7}{31}{Representative Security, Privacy, and Reliability Test Cases}{table.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.5}Performance Evaluation and Empirical Benchmarks}{31}{subsection.10.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {10.5.1}Benchmarking Objectives and Environment Specification}{31}{subsubsection.10.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {10.5.2}Component Saturation Microbenchmarks}{32}{subsubsection.10.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Component Saturation Microbenchmark Results (Stages 0, 1, and 2)}}{32}{table.caption.10}\protected@file@percent }
+\newlabel{tab:saturation_microbenchmarks}{{8}{32}{Component Saturation Microbenchmark Results (Stages 0, 1, and 2)}{table.caption.10}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {10.5.3}Rate-Controlled End-to-End Pipeline Evaluation}{32}{subsubsection.10.5.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Rate-Controlled End-to-End Pipeline Evaluation (Category 4)}}{33}{table.caption.11}\protected@file@percent }
+\newlabel{tab:e2e_results}{{9}{33}{Rate-Controlled End-to-End Pipeline Evaluation (Category 4)}{table.caption.11}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {10.5.4}Packet Accounting Conservation and Latency Attribution}{33}{subsubsection.10.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {10.5.5}Performance Limitations and Target Disclosures}{33}{subsubsection.10.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}Screenshots}{34}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.1}Verification Methodology and Text-Based Execution Evidence}{34}{subsection.11.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.2}System Ingress and Health Probe Evidence}{34}{subsection.11.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Verbatim Terminal Evidence: System Health Probe and Prometheus Metrics}}{35}{figure.caption.12}\protected@file@percent }
+\newlabel{lst:demo_health_metrics}{{5}{35}{Verbatim Terminal Evidence: System Health Probe and Prometheus Metrics}{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.3}Telemetry Processing and Privacy PII Redaction Evidence}{35}{subsection.11.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Verbatim Terminal Evidence: Normal Telemetry Ingestion and Complete PII Sanitization}}{36}{figure.caption.13}\protected@file@percent }
+\newlabel{lst:demo_telemetry_anon}{{6}{36}{Verbatim Terminal Evidence: Normal Telemetry Ingestion and Complete PII Sanitization}{figure.caption.13}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.4}Security Anomaly Rejection and Audit Immutability Evidence}{36}{subsection.11.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Verbatim Terminal Evidence: Anomaly Rejection, Security Audit Logging, and Trigger Immutability}}{37}{figure.caption.14}\protected@file@percent }
+\newlabel{lst:demo_anomaly_audit}{{7}{37}{Verbatim Terminal Evidence: Anomaly Rejection, Security Audit Logging, and Trigger Immutability}{figure.caption.14}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.5}UML Use Case Model}{37}{subsection.11.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces System Use Case Diagram: User Classes and Security Boundaries}}{38}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:use_case_diagram_evidence}{{8}{38}{System Use Case Diagram: User Classes and Security Boundaries}{figure.caption.15}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {12}Conclusion}{38}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.1}Summary of Implemented Outcomes}{38}{subsection.12.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.2}Empirical Verification Summary}{39}{subsection.12.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.3}Final Compliance Status}{39}{subsection.12.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {13}Future Work}{40}{section.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {13.1}Multi-Node Cluster Scaling and Production Load Verification}{40}{subsection.13.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {13.2}Hardware-Enforced WORM Storage for Security Logs}{40}{subsection.13.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {13.3}Distributed Redis Cluster Rate Limiting}{40}{subsection.13.3}\protected@file@percent }
+\bibcite{wiegers_srs}{1}
+\bibcite{oasis_mqtt5}{2}
+\bibcite{rfc5246_tls}{3}
+\bibcite{rfc8446_tls}{4}
+\bibcite{granjal2015security}{5}
+\bibcite{redis_ratelimit}{6}
+\@writefile{toc}{\contentsline {subsection}{\numberline {13.4}Machine Learning-Driven Streaming Anomaly Detection}{41}{subsection.13.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {13.5}Hardware-Based Zero-Trust Device Attestation}{41}{subsection.13.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {14}References}{41}{section.14}\protected@file@percent }
+\bibcite{gdpr2016}{7}
+\bibcite{nist_sp800_122}{8}
+\bibcite{krumm2009survey}{9}
+\bibcite{timescaledb_paper}{10}
+\bibcite{nygard2018release}{11}
+\bibcite{saltzer1975protection}{12}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Appendix: Implementation}{42}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.1}Fail-Secure Privacy Anonymizer Implementation}{43}{subsection.A.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Fail-Secure Privacy Anonymizer Logic (\texttt  {anonymizer.py})}}{44}{figure.caption.16}\protected@file@percent }
+\newlabel{lst:anonymizer_impl}{{9}{44}{Fail-Secure Privacy Anonymizer Logic (\texttt {anonymizer.py})}{figure.caption.16}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.2}Database Schema and Immutable Audit Trigger}{45}{subsection.A.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces PostgreSQL TimescaleDB Hypertable and Immutable Audit Trigger Schema}}{45}{figure.caption.17}\protected@file@percent }
+\newlabel{lst:database_schema_sql}{{10}{45}{PostgreSQL TimescaleDB Hypertable and Immutable Audit Trigger Schema}{figure.caption.17}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.3}Selected System Commands and Run Instructions}{46}{subsection.A.3}\protected@file@percent }
+\gdef \@abspage@last{51}

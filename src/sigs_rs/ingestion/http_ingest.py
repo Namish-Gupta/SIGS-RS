@@ -53,6 +53,12 @@ async def ingest_packet(
     metrics = getattr(request.app.state, "metrics", None) or get_metrics()
     metrics.record_packet_received()
 
+    if getattr(request.app.state, "compliance_lockout", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Simulation testing suspended: compliance guideline revision pending formal audit (SRS BR-3)."
+        )
+
     if getattr(request.app.state, "fail_closed", False):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -93,6 +99,12 @@ async def ingest_batch(
     """Accept multiple telemetry packets in one request."""
     metrics = getattr(request.app.state, "metrics", None) or get_metrics()
     metrics.record_packet_received(count=len(body.packets))
+
+    if getattr(request.app.state, "compliance_lockout", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Simulation testing suspended: compliance guideline revision pending formal audit (SRS BR-3)."
+        )
 
     if getattr(request.app.state, "fail_closed", False):
         raise HTTPException(

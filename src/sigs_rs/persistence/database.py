@@ -282,6 +282,16 @@ class InMemoryDatabasePool(DatabasePool):
             raise PersistenceError("Database pool is not connected.")
 
         clean_query = query.strip()
+        upper_query = clean_query.upper()
+
+        # SRS REQ-SE-4: Immutable audit log — block UPDATE or DELETE on audit.security_log
+        if "AUDIT.SECURITY_LOG" in upper_query:
+            if upper_query.startswith("UPDATE") or upper_query.startswith("DELETE") or " UPDATE " in upper_query or " DELETE " in upper_query:
+                raise PersistenceError(
+                    "Security violation: audit.security_log is immutable (SRS REQ-SE-4). "
+                    "UPDATE and DELETE operations are prohibited."
+                )
+
         if "INSERT INTO telemetry.sanitized_readings" in clean_query:
             self._id_counter += 1
             record = {

@@ -1,0 +1,46 @@
+\section{Existing Work / System}
+
+\subsection{Architecture of Traditional Municipal Telemetry Systems}
+Traditional municipal utility systems rely primarily on Supervisory Control and Data Acquisition (SCADA) networks or first-generation cloud IoT collectors. In these legacy architectures, telemetry streams from industrial RTUs (Remote Terminal Units) or commercial IoT gateways are ingested through central messaging servers and routed directly into relational databases or centralized data lakes.
+
+Data validation in legacy pipelines is typically deferred to downstream batch extraction, transformation, and loading (ETL) routines. Packets arriving at the ingestion boundary are assumed to originate from trustworthy hardware sensors, with minimal real-time inspection beyond basic JSON or binary syntax verification.
+
+\subsection{Shortcomings and Inherent Vulnerabilities}
+Detailed analysis of existing municipal sensor architectures reveals several structural vulnerabilities:
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Absence of Real-Time Physical Validation:} Traditional ingestion gateways perform type-checking (e.g., confirming a reading is a floating-point number) but lack semantic physical models. If an edge sensor experiences an analog-to-digital converter (ADC) malfunction, electrical short-circuit, or spoofing attack, impossible readings---such as negative water flow ($-50.0\text{ L/min}$) or energy consumption violating the laws of thermodynamics---are committed directly into the database. Downstream municipal water dispatch or grid-balancing software that relies on these values can trigger erroneous infrastructure shutdowns.
+    \item \textbf{Unchecked PII Infiltration and Spatial Surveillance:} Most commercial IoT payloads embed GPS coordinates, local cell tower identifiers, or network MAC addresses directly in telemetry metadata to assist network engineers during field maintenance. In traditional pipelines, these fields are stored unredacted in general-purpose database tables. Because spatial trajectories allow statistical re-identification of citizens, retaining raw geolocation records violates modern municipal privacy guidelines.
+    \item \textbf{Tight Synchronous Coupling and Cascading Resource Collapse:} In legacy architectures, the ingestion gateway thread directly manages the database insertion transaction. When database I/O saturates during municipal peak usage or network recovery storms, database response times climb from milliseconds to seconds. Gateway worker threads block waiting for database confirmations, exhausting socket connections and causing widespread packet drops across the entire sensor grid.
+    \item \textbf{Lack of Tamper-Proof Audit Logging:} Existing gateways typically emit log messages to local text files using standard logging frameworks (such as \texttt{syslog} or Log4j). These logs can be modified or deleted by compromised gateway processes or administrators, failing to provide immutable forensic proof of security incidents or data breaches.
+    \item \textbf{Lack of Regulatory Compliance Synchronization:} When municipal data privacy guidelines are revised, legacy gateways continue accepting and processing traffic under obsolete rules until all distributed instances are manually restarted. There is no automated, distributed mechanism to enforce immediate testing suspension pending regulatory audit signoff.
+\end{enumerate}
+
+\subsection{Comparison Matrix: Existing Systems vs. Required Security Profile}
+Table~\ref{tab:existing_vs_required} contrasts the architectural profile of conventional IoT ingestion pipelines against the security and reliability capabilities required by the authoritative SRS.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of Existing IoT Ingestion Systems and Required Architectural Profile}
+\label{tab:existing_vs_required}
+\small
+\begin{tabularx}{\linewidth}{@{}p{3.2cm} X X@{}}
+\toprule
+\textbf{Capability} & \textbf{Conventional IoT Pipeline} & \textbf{Required Architectural Profile (SRS)} \\
+\midrule
+\textbf{Ingestion Processing} & Synchronous; socket thread executes database write. & Asynchronous decoupled queue (\texttt{IngestionQueue}) with batch processing. \\
+\addlinespace
+\textbf{Rate-Limiting Policy} & Fixed-window or IP-based rate limiting at reverse proxy. & Per-sensor sliding-window log enforcing rolling 50 packets per 10 seconds. \\
+\addlinespace
+\textbf{Physical Validation} & Type-checking only; semantic domain validation deferred to ETL. & Real-time impossible-value bounds check at the edge; anomalous packets dropped instantly. \\
+\addlinespace
+\textbf{Privacy Sanitization} & Raw GPS and MAC addresses stored in primary database tables. & Mandatory PII stripping (\texttt{latitude}, \texttt{longitude}, \texttt{mac\_address}) prior to persistence. \\
+\addlinespace
+\textbf{Persistence Faults} & Gateway threads block; connection pool exhaustion; system crash. & Adaptive persistence Circuit Breaker ($> 2,000$~ms trip threshold) enforcing fail-closed protection. \\
+\addlinespace
+\textbf{Audit Trail} & Standard text logs; susceptible to file tampering or deletion. & Immutable append-only audit table protected by PostgreSQL triggers. \\
+\addlinespace
+\textbf{Compliance Lockout} & None; configuration updates occur without service suspension. & Immediate simulation testing lockout on guideline revisions until audit signoff (SRS BR-3). \\
+\bottomrule
+\end{tabularx}
+\end{table}

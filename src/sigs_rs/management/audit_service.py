@@ -20,11 +20,12 @@ FORBIDDEN_PII = frozenset(DEFAULT_PII_FIELDS)
 
 
 def _sanitize_audit_detail(detail: Any, forbidden_pii: frozenset[str] = FORBIDDEN_PII) -> Any:
-    """Recursively strip or mask any accidental PII from audit details before returning via API."""
+    """Recursively strip or mask any accidental PII from audit details before returning via API (case-insensitive)."""
+    forbidden_lower = {f.lower() for f in forbidden_pii}
     if isinstance(detail, dict):
         cleaned: dict[str, Any] = {}
         for k, v in detail.items():
-            if k in forbidden_pii:
+            if k.lower() in forbidden_lower:
                 cleaned[k] = "[REDACTED]"
             else:
                 cleaned[k] = _sanitize_audit_detail(v, forbidden_pii)

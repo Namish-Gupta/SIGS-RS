@@ -1,0 +1,175 @@
+\section{Module Descriptions with Diagrams}
+
+\subsection{Security Processing Pipeline Subsystem}
+The core defensive perimeter of SIGS-RS is the sequential Security Processing Pipeline. Designed according to the principle of fail-secure default denial, every packet entering the gateway must traverse a battery of cryptographic, volumetric, statistical, physical, and privacy checks before reaching persistent storage.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.1cm and 0.8cm,
+    stage/.style={draw, rectangle, rounded corners=3pt, minimum width=3.2cm, minimum height=0.8cm, align=center, font=\scriptsize\bfseries, fill=blue!8},
+    decision/.style={draw, diamond, aspect=1.6, minimum width=2.6cm, minimum height=0.9cm, align=center, font=\tiny\bfseries, fill=yellow!15},
+    drop/.style={draw, rectangle, rounded corners=2pt, minimum width=2.4cm, minimum height=0.6cm, align=center, font=\tiny\bfseries, fill=red!15},
+    sink/.style={draw, cylinder, shape border rotate=90, aspect=0.25, minimum width=2.2cm, minimum height=0.9cm, align=center, font=\tiny\bfseries, fill=orange!15},
+    arrow/.style={->, >=stealth, thick},
+    droparrow/.style={->, >=stealth, dashed, red!70!black, thick}
+]
+
+% Nodes top-to-bottom
+\node[stage, fill=gray!15] (ingres) {Raw Telemetry Ingress\\(MQTT Port 8883 / HTTP)};
+\node[decision, below=0.7cm of ingres] (dsize) {Size $\le 512$ KB?};
+\node[drop, right=1.2cm of dsize] (drop1) {Drop: Oversized Packet};
+
+\node[decision, below=0.8cm of dsize] (dschema) {Valid JSON Schema?};
+\node[drop, right=1.2cm of dschema] (drop2) {Drop: Schema Violation};
+
+\node[decision, below=0.8cm of dschema] (drate) {Rate $\le 50$ pkts / 10s?};
+\node[drop, right=1.2cm of drate] (drop3) {Drop: Rate Exceeded};
+
+\node[decision, below=0.8cm of drate] (dphys) {Physical Bounds Valid?};
+\node[drop, right=1.2cm of dphys] (drop4) {Drop: Impossible Value};
+
+\node[stage, fill=green!15, below=0.8cm of dphys] (anon) {Privacy Anonymizer\\Purge lat, lon, mac, device\_id};
+
+\node[decision, below=0.8cm of anon] (dredact) {Zero PII Residuals?};
+\node[drop, right=1.2cm of dredact] (drop5) {Fail-Secure Discard};
+
+\node[stage, fill=purple!15, below=0.8cm of dredact] (cb) {Circuit Breaker Check\\Latency $\le 2000$ ms?};
+\node[sink, below=0.8cm of cb] (db) {TimescaleDB\\sanitized\_readings};
+
+\node[sink, fill=red!10, right=4.5cm of dphys] (audit) {Security Audit Log\\audit.security\_log};
+
+% Connections
+\draw[arrow] (ingres) -- (dsize);
+\draw[arrow] (dsize) -- node[left, font=\tiny] {Yes} (dschema);
+\draw[droparrow] (dsize) -- node[above, font=\tiny] {No} (drop1);
+
+\draw[arrow] (dschema) -- node[left, font=\tiny] {Yes} (drate);
+\draw[droparrow] (dschema) -- node[above, font=\tiny] {No} (drop2);
+
+\draw[arrow] (drate) -- node[left, font=\tiny] {Yes} (dphys);
+\draw[droparrow] (drate) -- node[above, font=\tiny] {No} (drop3);
+
+\draw[arrow] (dphys) -- node[left, font=\tiny] {Yes} (anon);
+\draw[droparrow] (dphys) -- node[above, font=\tiny] {No} (drop4);
+
+\draw[arrow] (anon) -- (dredact);
+\draw[arrow] (dredact) -- node[left, font=\tiny] {Yes} (cb);
+\draw[droparrow] (dredact) -- node[above, font=\tiny] {No} (drop5);
+
+\draw[arrow] (cb) -- node[left, font=\tiny] {Closed} (db);
+
+% Routes to audit
+\draw[droparrow] (drop1) -| (audit);
+\draw[droparrow] (drop2) -| (audit);
+\draw[droparrow] (drop3) -- (audit);
+\draw[droparrow] (drop4) -| (audit);
+\draw[droparrow] (drop5) -| (audit);
+
+\end{tikzpicture}
+\caption{SIGS-RS Multi-Stage Security and Privacy Pipeline (Diagram 3)}
+\label{fig:security_pipeline}
+\end{figure}
+
+\subsubsection{Sliding-Window Frequency Control Algorithm}
+The Anomalous Packet Inspector tracks sensor packet frequencies using a sliding-window log algorithm. For each incoming packet from sensor $s_i$ arriving at timestamp $t_{now}$, the inspector executes the following atomic algorithm:
+\begin{enumerate}
+    \item Compute the lower timestamp bound of the rolling window: $t_{window} = t_{now} - 10.0\text{ seconds}$.
+    \item Remove all expired timestamps belonging to sensor $s_i$ where $t < t_{window}$.
+    \item Query the cardinality of the remaining log entries: $k = |\{t \in \mathcal{L}(s_i) : t \ge t_{window}\}|$.
+    \item If $k \ge 50$, trigger an anomaly rejection: record an audit drop event and discard the packet.
+    \item If $k < 50$, append $t_{now}$ to $\mathcal{L}(s_i)$ and permit the packet to advance to physical validation.
+\end{enumerate}
+
+In production, this algorithm is implemented via Redis Sorted Sets using an atomic Lua script:
+\begin{verbatim}
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+local current = redis.call('ZCARD', KEYS[1])
+if current >= tonumber(ARGV[2]) then
+    return 0
+else
+    redis.call('ZADD', KEYS[1], ARGV[3], ARGV[3])
+    redis.call('EXPIRE', KEYS[1], 15)
+    return 1
+end
+\end{verbatim}
+This achieves strict $\mathcal{O}(\log N + M)$ time complexity, executing in under 0.2~ms per packet.
+
+\subsubsection{Physical Bound Consistency Verification}
+Packets passing frequency control are subjected to domain-specific physics validation implemented in \texttt{payload\_validator.py}:
+\begin{equation}
+\mathcal{V}(P) = \begin{cases}
+\text{Valid} & \text{if } P.\text{type} = \text{water} \land P.\text{flow} \ge 0.0 \land 0.0 \le P.\text{pH} \le 14.0 \\
+\text{Valid} & \text{if } P.\text{type} = \text{energy} \land P.\text{kWh} \ge 0.0 \land 0.0 \le P.\text{PF} \le 1.0 \\
+\text{Valid} & \text{if } P.\text{type} = \text{air} \land 0.0 \le P.\text{AQI} \le 500.0 \land 0.0 \le P.\text{humidity} \le 100.0 \\
+\text{Invalid} & \text{otherwise}
+\end{cases}
+\end{equation}
+Any sensor reading outside these physically possible boundaries indicates hardware malfunction or malicious packet injection and is rejected immediately.
+
+\subsection{Cloud-Native Kubernetes Deployment Architecture}
+Figure~\ref{fig:deployment_architecture} illustrates the production deployment topology of SIGS-RS in a cloud-native Kubernetes environment.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners=3pt, minimum width=2.6cm, minimum height=0.8cm, align=center, font=\scriptsize\bfseries, fill=blue!5},
+    storage/.style={draw, cylinder, shape border rotate=90, aspect=0.25, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\scriptsize\bfseries, fill=orange!10},
+    cluster/.style={draw=blue!60, dashed, thick, rounded corners=5pt, fill=blue!2, inner sep=10pt},
+    arrow/.style={->, >=stealth, thick}
+]
+
+% Edge
+\node[box, fill=gray!15] (edge) at (0, 3.5) {External Sensor Fleet\\(10,000 Edge Nodes)};
+
+% Ingress
+\node[box, fill=purple!10] (ingress) at (4.5, 3.5) {Kubernetes Ingress\\(TLS Termination Port 8883/443)};
+
+% Pods (HPA)
+\node[box, fill=green!10] (pod1) at (9.0, 4.5) {Gateway Pod 1\\FastAPI / Uvicorn};
+\node[box, fill=green!10] (pod2) at (9.0, 3.5) {Gateway Pod 2\\FastAPI / Uvicorn};
+\node[box, fill=green!10] (pod3) at (9.0, 2.5) {Gateway Pod $N$\\FastAPI / Uvicorn};
+
+% Datastores
+\node[storage, fill=red!10] (redis) at (13.5, 4.5) {Redis Cluster\\Sliding Window Log};
+\node[storage, fill=yellow!15] (timescale) at (13.5, 3.0) {TimescaleDB\\sanitized\_readings};
+\node[storage, fill=orange!15] (auditdb) at (13.5, 1.5) {PostgreSQL\\Immutable Audit};
+
+% Observability
+\node[box, fill=cyan!10] (prom) at (9.0, 0.8) {Prometheus Pod\\Scrapes /metrics};
+\node[box, fill=cyan!10] (grafana) at (4.5, 0.8) {Grafana Dashboard\\Real-Time Telemetry};
+
+% Connections
+\draw[arrow] (edge) -- node[above, font=\tiny] {MQTTS / HTTPS} (ingress);
+\draw[arrow] (ingress) -- (pod1);
+\draw[arrow] (ingress) -- (pod2);
+\draw[arrow] (ingress) -- (pod3);
+
+\draw[arrow] (pod1) -- (redis);
+\draw[arrow] (pod2) -- (redis);
+\draw[arrow] (pod3) -- (timescale);
+\draw[arrow] (pod2) -- (timescale);
+\draw[arrow] (pod1) -- (auditdb);
+\draw[arrow] (pod2) -- (auditdb);
+
+\draw[arrow] (prom) -- node[right, font=\tiny] {Poll} (pod3);
+\draw[arrow] (grafana) -- node[above, font=\tiny] {Query} (prom);
+
+% Boundaries
+\begin{scope}[on background layer]
+\node[cluster, fit=(ingress) (pod1) (pod3) (redis) (timescale) (auditdb) (prom) (grafana)] (k8s) {};
+\node[above right, font=\footnotesize\bfseries, text=blue!80!black] at (k8s.north west) {Kubernetes Production Cluster Boundary};
+\end{scope}
+
+\end{tikzpicture}
+\caption{Cloud-Native Kubernetes Deployment Topology (Diagram 4)}
+\label{fig:deployment_architecture}
+\end{figure}
+
+\subsection{Persistence Circuit Breaker State Machine}
+To safeguard the gateway process against unhandled database exhaustion or high-latency downstream bottlenecks, the persistence layer incorporates a self-healing Circuit Breaker pattern (\texttt{circuit\_breaker.py}). The breaker models three distinct states:
+\begin{enumerate}
+    \item \textbf{CLOSED (Normal Operation):} All sanitized telemetry packets are dispatched to the \texttt{TimescaleDB} connection pool. The breaker tracks the sliding average of execution latencies over the last 100 persistence operations.
+    \item \textbf{OPEN (Failure Suspension):} If consecutive batch persistence latency exceeds 2,000~ms or if three consecutive connection timeouts occur, the circuit breaker trips to \texttt{OPEN}. In this state, incoming telemetry persistence is immediately halted to prevent thread pool exhaustion, returning HTTP 503 to ingress callers.
+    \item \textbf{HALF-OPEN (Cautious Probing):} After a configured cooling interval (default: 30 seconds), the circuit transitions to \texttt{HALF-OPEN}, admitting a single canary batch. If the canary insert succeeds within $< 500$~ms, the breaker resets to \texttt{CLOSED}; otherwise, it re-trips to \texttt{OPEN} for an exponential backoff period.
+\end{enumerate}

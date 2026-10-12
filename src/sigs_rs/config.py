@@ -5,7 +5,7 @@ Uses pydantic-settings for validation and type coercion.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator, AnyUrl, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+    def __init__(self, **values: Any) -> None:
+        if str(values.get("app_env", "")).lower() in ("prod", "production", "live"):
+            if "database_ssl_mode" not in values:
+                values["database_ssl_mode"] = "verify-full"
+        super().__init__(**values)
 
     # ─── Application ─────────────────────────────────────────────────────────
     app_env: str = Field(default="development")
@@ -70,6 +75,10 @@ class Settings(BaseSettings):
     )
 
     max_payload_size_bytes: int = Field(default=constants.MAX_PAYLOAD_BYTES)
+    compliance_guideline_version: str = Field(
+        default=constants.COMPLIANCE_GUIDELINE_VERSION,
+        description="Active Data Anonymization and Privacy Compliance Guidelines version (SRS REQ-PA-2, BR-3).",
+    )
 
     # ─── Redis ────────────────────────────────────────────────────────────────
     redis_url: str | None = Field(
@@ -148,10 +157,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_mqtt_and_environment(self) -> "Settings":
         """
-        Validate MQTT configuration:
+        Validate MQTT and environment configuration:
         - Parses mqtt_broker_url if provided.
         - Enforces TLS 1.2+ for production mode (SRS REQ-TI-1, REQ-SE-1).
         - Allows plain MQTT only in development and testing environments.
+        - Enforces staging/test DB cluster isolation (SRS REQ-SF-1).
+        - Enforces database_ssl_mode='verify-full' in production (SRS REQ-SE-3).
         """
         if self.mqtt_broker_url:
             parsed = urlparse(self.mqtt_broker_url)
@@ -163,6 +174,30 @@ class Settings(BaseSettings):
                 self.mqtt_broker_port = parsed.port or 1883
             if parsed.hostname:
                 self.mqtt_broker_host = parsed.hostname
+
+        # SRS REQ-SF-1: Environment Isolation
+        try:
+            after_at = self.database_url.split("@")[-1]
+            db_host = after_at.split(":")[0].split("/")[0].lower()
+        except Exception:
+            db_host = ""
+
+        if db_host:
+            blocked_keywords = ["prod", "production", "live"]
+            if any(kw in db_host for kw in blocked_keywords):
+                raise ProductionDatabaseError(
+                    f"DATABASE_URL host '{db_host}' looks like a production database. "
+                    "Only staging or test clusters are permitted (SRS REQ-SF-1)."
+                )
+
+            is_staging_or_test = any(kw in db_host for kw in ("staging", "test", "stage"))
+            allowed = [h.strip().lower() for h in self.allowed_db_hosts.split(",") if h.strip()]
+            is_allowed_host = any(db_host == a or db_host.endswith("." + a) or a in db_host for a in allowed)
+            if not (is_staging_or_test or is_allowed_host):
+                raise ProductionDatabaseError(
+                    f"DATABASE_URL host '{db_host}' is neither a recognized staging/test cluster "
+                    f"nor in allowed_db_hosts ({allowed}). Accidental production targeting prevented (SRS REQ-SF-1)."
+                )
 
         if self.app_env.lower() in ("prod", "production", "live"):
             if not self.mqtt_use_tls:
@@ -176,6 +211,10 @@ class Settings(BaseSettings):
             if self.mqtt_insecure_skip_verify:
                 raise ConfigError(
                     "Production configuration cannot disable TLS certificate verification."
+                )
+            if (self.database_ssl_mode or "").lower() != "verify-full":
+                raise ConfigError(
+                    "Production configuration requires database_ssl_mode='verify-full' (SRS REQ-SE-3)."
                 )
         return self
 

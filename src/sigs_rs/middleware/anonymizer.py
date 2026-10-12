@@ -93,9 +93,12 @@ class PrivacyAnonymizer:
         """
         Recursively remove configured PII keys from a detached JSON-like value.
         Lists are traversed as well as objects so nested PII cannot survive.
+        Matches keys case-insensitively.
         """
         if isinstance(data, dict):
-            for field in pii_fields:
+            targets_lower = {field.lower() for field in pii_fields}
+            keys_to_remove = [k for k in list(data.keys()) if k.lower() in targets_lower]
+            for field in keys_to_remove:
                 data.pop(field, None)
             for value in data.values():
                 PrivacyAnonymizer._strip_pii(value, pii_fields)
@@ -125,11 +128,12 @@ class PrivacyAnonymizer:
 
 
 def _find_keys(data: Any, targets: set[str]) -> list[str]:
-    """Return configured keys found anywhere in a nested JSON-like value."""
+    """Return configured keys found anywhere in a nested JSON-like value (case-insensitive)."""
+    targets_lower = {t.lower() for t in targets}
     found: list[str] = []
     if isinstance(data, dict):
         for key, value in data.items():
-            if key in targets:
+            if key.lower() in targets_lower:
                 found.append(key)
             found.extend(_find_keys(value, targets))
     elif isinstance(data, list):

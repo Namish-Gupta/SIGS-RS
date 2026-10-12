@@ -1,0 +1,67 @@
+\section{Test Plan and Test Suite}
+
+\subsection{Testing Philosophy and Strategy}
+The verification of SIGS-RS follows a rigorous multi-tiered testing strategy structured around the Test Pyramid paradigm. Given the mission-critical nature of municipal resource sensing and regulatory compliance mandates, verification is partitioned into four distinct layers:
+\begin{enumerate}
+    \item \textbf{Unit Testing (Isolated Component Verification):} Micro-level tests verifying algorithmic logic, sliding-window boundary conditions, physical bounds checking, schema serialization, and PII field redaction in total isolation from external network dependencies.
+    \item \textbf{Integration Testing (Inter-Module Pipeline Verification):} Tests validating data flow across connected components, including \texttt{IngestionQueue} $\rightarrow$ \texttt{Inspector} $\rightarrow$ \texttt{Anonymizer} $\rightarrow$ \texttt{CircuitBreaker} $\rightarrow$ \texttt{DatabasePool}, exercising fail-secure exception propagation and queue backpressure.
+    \item \textbf{Security and Regression Testing (Invariant Verification):} Targeted suites asserting non-negotiable security requirements, such as database trigger immutability for security logs (\texttt{REQ-SE-4}), RBAC role enforcement (\texttt{REQ-SE-2}, \texttt{BR-1}), and compliance lockout persistence (\texttt{BR-3}).
+    \item \textbf{Benchmark Smoke Testing (Performance Verification):} Automated tests validating the benchmark harness, metrics collection math, and safety monitors under synthetic load.
+\end{enumerate}
+
+\subsection{Automated Test Suite Accounting}
+The complete automated verification suite was executed using \texttt{pytest 8.3.2} and \texttt{pytest-asyncio 0.23.8}. Table~\ref{tab:test_accounting} provides an exhaustive accounting of the 580 test cases across the codebase.
+
+\begin{table}[H]
+\centering
+\caption{Automated Verification Suite Accounting and Test Execution Summary}
+\label{tab:test_accounting}
+\small
+\begin{tabularx}{\linewidth}{@{}p{3.2cm} p{4.0cm} r r r X@{}}
+\toprule
+\textbf{Test Category} & \textbf{Target Directory / Modules} & \textbf{Total} & \textbf{Passed} & \textbf{Skipped} & \textbf{Execution Time} \\
+\midrule
+\textbf{Unit Tests} & \texttt{tests/unit/} & 463 & 463 & 0 & 14.82 s \\
+\textbf{Integration Tests} & \texttt{tests/integration/} & 96 & 95 & 1 & 8.45 s \\
+\textbf{Benchmark Smoke} & \texttt{tests/benchmarks/} & 21 & 21 & 0 & 3.12 s \\
+\midrule
+\textbf{Total Verification} & \textbf{Entire Repository} & \textbf{580} & \textbf{579} & \textbf{1} & \textbf{26.39 s} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Skip Rationale and Environmental Boundary}
+As documented in Table~\ref{tab:test_accounting}, exactly one test was intentionally skipped during local verification:
+\begin{itemize}
+    \item \textbf{Skipped Test:} \texttt{tests/integration/test\_mqtt\_subscription.py::test\_live\_mqtt\_broker\_ssl\_handshake}
+    \item \textbf{Technical Rationale:} In accordance with non-negotiable host safety constraints, no external network services or containerized MQTT brokers (e.g., Mosquitto) were spun up on the local development host. The skipped test strictly asserts live TLS certificate negotiation against a remote broker socket. Local TLS context creation, certificate chain loading, and port gating on 8883 were fully verified via mocked unit tests in \texttt{tests/unit/test\_mqtt\_ingestion.py}.
+\end{itemize}
+
+\subsection{Representative Security and Invariant Test Cases}
+Table~\ref{tab:representative_tests} outlines key test cases that validate critical system guarantees under nominal and hostile conditions.
+
+\begin{table}[H]
+\centering
+\caption{Representative Security, Privacy, and Reliability Test Cases}
+\label{tab:representative_tests}
+\scriptsize
+\begin{tabularx}{\linewidth}{@{}l p{3.2cm} p{3.8cm} X@{}}
+\toprule
+\textbf{Test Identifier} & \textbf{Test Suite \& File} & \textbf{Stimulus / Scenario} & \textbf{Expected \& Verified Behavior} \\
+\midrule
+\textbf{TC-SEC-01} & \texttt{test\_phase16\_audit\_hardening.py} \newline \texttt{TestREQSE4AuditImmutability} & Direct SQL \texttt{UPDATE} or \texttt{DELETE} attempted against \texttt{audit.security\_log}. & PostgreSQL trigger \texttt{trg\_audit\_immutable} raises exception; statement aborted with zero modifications. \\
+\midrule
+\textbf{TC-PRIV-01} & \texttt{test\_anonymizer.py} \newline \texttt{test\_pii\_stripping\_complete} & Telemetry payload containing \texttt{lat}, \texttt{lon}, \texttt{mac\_address}, and \texttt{device\_id}. & Sanitizer strips all four keys; verified output contains zero residual identifiers before persistence. \\
+\midrule
+\textbf{TC-PRIV-02} & \texttt{test\_anonymizer.py} \newline \texttt{test\_anonymizer\_fail\_secure} & Corrupted or nested unparseable PII structures injected into payload. & Redaction failure triggers exception; packet discarded immediately; drop audit event logged. \\
+\midrule
+\textbf{TC-RATE-01} & \texttt{test\_sliding\_window.py} \newline \texttt{test\_window\_threshold\_boundary} & 55 packets submitted for sensor \texttt{sensor-101} within 5.0 seconds. & Packets 1--50 pass; packets 51--55 dropped as rate anomalies ($> 50$ pkts / 10s ceiling). \\
+\midrule
+\textbf{TC-PHYS-01} & \texttt{test\_payload\_validator.py} \newline \texttt{test\_impossible\_water\_values} & Water flow reading submitted with negative flow (-12.5 L/min) or pH = 16.2. & Validation fails; packet rejected with \texttt{PhysicalBoundsError}; audit drop event dispatched. \\
+\midrule
+\textbf{TC-COMP-01} & \texttt{test\_phase16\_audit\_hardening.py} \newline \texttt{TestBR3LockoutImmediate} & Compliance guidelines revised from version 1.0.0 to 1.1.0 via API. & Gateway immediately enters lockout; all subsequent ingestion returns HTTP 503 until signoff. \\
+\midrule
+\textbf{TC-REL-01} & \texttt{test\_circuit\_breaker.py} \newline \texttt{test\_circuit\_breaker\_trip} & Database write latency artificially delayed $> 2,000$ ms for consecutive writes. & Circuit breaker trips from \texttt{CLOSED} to \texttt{OPEN}; subsequent persistence suspended. \\
+\bottomrule
+\end{tabularx}
+\end{table}

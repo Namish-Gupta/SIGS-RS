@@ -76,6 +76,17 @@ class PayloadValidator:
                 f"(NaN/Infinity not accepted for {resource})"
             )
 
+        # Check extended metrics if present (SRS REQ-API-3)
+        ext = packet.resource_extended() if hasattr(packet, "resource_extended") else None
+        if ext is not None:
+            ext_dict = ext.model_dump() if hasattr(ext, "model_dump") else (ext if isinstance(ext, dict) else {})
+            for field_name, field_val in ext_dict.items():
+                if isinstance(field_val, (int, float)) and (math.isnan(field_val) or math.isinf(field_val)):
+                    raise ImpossibleValueError(
+                        f"sensor={packet.sensor_id}: extended field '{field_name}' has impossible value {field_val} "
+                        f"(NaN/Infinity not accepted)"
+                    )
+
         bounds = self._bounds.get(resource)
         if bounds is None:
             # No bounds configured for this resource type — pass through.

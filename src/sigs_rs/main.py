@@ -79,10 +79,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     repository = TelemetryRepository(db)
     audit_logger = AuditLogger(repository)
 
-    # ── MQTT Subscriber (created early so CB callbacks can reference it) ─────
-    from sigs_rs.ingestion.mqtt_sub import MQTTSubscriber
-    mqtt = MQTTSubscriber(settings, queue=None, audit_logger=audit_logger)  # queue set below
-
     circuit_breaker = CircuitBreaker(
         failure_threshold_ms=settings.circuit_breaker_failure_threshold_ms,
         cooldown_seconds=settings.circuit_breaker_cooldown_seconds,
@@ -91,6 +87,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         on_close_callback=lambda: _cb_close_handler(app),
         probe_action=repository.probe_connection,
     )
+
+    # ── MQTT Subscriber (created early so CB callbacks can reference it) ─────
+    from sigs_rs.ingestion.mqtt_sub import MQTTSubscriber
+    mqtt = MQTTSubscriber(
+        settings,
+        queue=None,
+        audit_logger=audit_logger,
+        circuit_breaker=circuit_breaker,
+        fail_closed_check=lambda: getattr(app.state, "fail_closed", False),
+        compliance_check=lambda: getattr(app.state, "compliance_lockout", False),
+    )  # queue set below
 
     # ── Middleware ────────────────────────────────────────────────────────────
     window = SlidingWindow(
@@ -116,6 +123,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         repository=repository,
         circuit_breaker=circuit_breaker,
         audit_logger=audit_logger,
+        fail_closed_check=lambda: getattr(app.state, "fail_closed", False),
+        compliance_check=lambda: getattr(app.state, "compliance_lockout", False),
     )
 
     # ── Attach to app state ───────────────────────────────────────────────────
@@ -131,6 +140,69 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.fail_closed = False
     app.state.environment = settings.app_env
     app.state.metrics = get_metrics()
+
+    # ── BR-3 Compliance Lockout Verification ─────────────────────────────────
+    from sigs_rs.common.constants import COMPLIANCE_GUIDELINE_VERSION
+    persisted_compliance = None
+    if repository is not None and hasattr(repository, "get_setting"):
+        try:
+            persisted_compliance = await repository.get_setting("compliance.state")
+        except Exception as exc:
+            logger.critical("DB failure loading compliance state at startup: %s. Enforcing fail-closed.", exc)
+            app.state.compliance_lockout = True
+            app.state.compliance_audited = False
+            app.state.fail_closed = True
+
+    if isinstance(persisted_compliance, dict):
+        app.state.compliance_guideline_version = persisted_compliance.get(
+            "guideline_version", settings.compliance_guideline_version
+        )
+        app.state.compliance_lockout = persisted_compliance.get("lockout_active", False)
+        app.state.compliance_audited = persisted_compliance.get("audited", not app.state.compliance_lockout)
+        if app.state.compliance_lockout:
+            app.state.fail_closed = True
+            logger.critical(
+                "BR-3 Compliance Lockout active from persistent state (guideline v%s). Testing suspended.",
+                app.state.compliance_guideline_version,
+            )
+    else:
+        app.state.compliance_guideline_version = settings.compliance_guideline_version
+        app.state.compliance_lockout = False
+        app.state.compliance_audited = True
+
+        if settings.compliance_guideline_version != COMPLIANCE_GUIDELINE_VERSION:
+            logger.critical(
+                "BR-3 Compliance Lockout: Guideline version '%s' differs from baseline '%s'. "
+                "Suspending all simulation testing until formal compliance audit.",
+                settings.compliance_guideline_version,
+                COMPLIANCE_GUIDELINE_VERSION,
+            )
+            app.state.compliance_lockout = True
+            app.state.compliance_audited = False
+            app.state.fail_closed = True
+            if repository is not None and hasattr(repository, "set_setting"):
+                try:
+                    await repository.set_setting(
+                        key="compliance.state",
+                        value={
+                            "guideline_version": settings.compliance_guideline_version,
+                            "approved_version": COMPLIANCE_GUIDELINE_VERSION,
+                            "lockout_active": True,
+                            "audited": False,
+                        },
+                        updated_by="system",
+                    )
+                except Exception:
+                    pass
+            await audit_logger.log(
+                event_type=AuditEvent.COMPLIANCE_LOCKOUT,
+                severity="CRITICAL",
+                detail={
+                    "configured_version": settings.compliance_guideline_version,
+                    "approved_version": COMPLIANCE_GUIDELINE_VERSION,
+                    "reason": "Guidelines revised without compliance audit approval (SRS BR-3).",
+                },
+            )
 
     # ── Start background tasks ────────────────────────────────────────────────
     import asyncio
@@ -168,6 +240,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _sliding_window_cleanup_loop(), name="sliding-window-cleanup"
     )
 
+    # ── Compliance synchronization loop (SRS BR-3) ──────────────────────────
+    async def _compliance_sync_loop() -> None:
+        """Periodically sync compliance state from persistent database across instances (SRS BR-3)."""
+        sync_interval = 1.0  # 1-second interval ensures sub-second/1s cross-instance freshness
+        try:
+            while True:
+                await asyncio.sleep(sync_interval)
+                if repository is not None and hasattr(repository, "get_setting"):
+                    try:
+                        db_state = await repository.get_setting("compliance.state")
+                        if isinstance(db_state, dict):
+                            app.state.compliance_guideline_version = db_state.get(
+                                "guideline_version",
+                                getattr(app.state, "compliance_guideline_version", settings.compliance_guideline_version),
+                            )
+                            app.state.compliance_lockout = db_state.get("lockout_active", False)
+                            app.state.compliance_audited = db_state.get("audited", not app.state.compliance_lockout)
+                            if app.state.compliance_lockout:
+                                app.state.fail_closed = True
+                    except Exception as exc:
+                        logger.critical("DB failure during compliance sync: %s. Enforcing fail-closed.", exc)
+                        app.state.compliance_lockout = True
+                        app.state.compliance_audited = False
+                        app.state.fail_closed = True
+        except asyncio.CancelledError:
+            logger.info("Compliance sync task cancelled.")
+
+    compliance_task = asyncio.create_task(
+        _compliance_sync_loop(), name="compliance-sync"
+    )
+
     await audit_logger.log(AuditEvent.SYSTEM_STARTUP, detail={"env": settings.app_env})
     logger.info("SIGS-RS ready.")
 
@@ -192,7 +295,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 except asyncio.CancelledError:
                     pass
 
-    for task in (pipeline_task, cleanup_task):
+    for task in (pipeline_task, cleanup_task, compliance_task):
         if task and not task.done():
             task.cancel()
             try:

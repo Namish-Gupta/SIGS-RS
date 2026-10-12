@@ -34,6 +34,9 @@ DEFAULT_PII_FIELDS: list[str] = [
     "geo",
 ]
 
+# Baseline Privacy Compliance Guidelines Version (SRS REQ-PA-2, BR-3)
+COMPLIANCE_GUIDELINE_VERSION: str = "3.0"
+
 # ─── Resource Types ───────────────────────────────────────────────────────────
 VALID_RESOURCE_TYPES: tuple[str, ...] = ("water", "energy", "air_quality")
 
@@ -86,13 +89,17 @@ class AuditEvent:
     CONFIG_CHANGE             = "CONFIG_CHANGE"
     CB_OPEN                   = "CIRCUIT_BREAKER_OPEN"
     CB_CLOSE                  = "CIRCUIT_BREAKER_CLOSE"
+    CIRCUIT_BREAKER_TRIPPED   = "CIRCUIT_BREAKER_OPEN"
     SYSTEM_FAIL_CLOSED        = "SYSTEM_FAIL_CLOSED"
     SYSTEM_STARTUP            = "SYSTEM_STARTUP"
     SYSTEM_SHUTDOWN           = "SYSTEM_SHUTDOWN"
+    COMPLIANCE_LOCKOUT        = "COMPLIANCE_LOCKOUT"
+    COMPLIANCE_AUDIT_RESUME   = "COMPLIANCE_AUDIT_RESUME"
 
 # ─── Role Names ───────────────────────────────────────────────────────────────
 class Role:
-    SECURITY_ENGINEER = "security_engineer"
-    BACKEND_DEVELOPER = "backend_developer"
-    QA_TESTER         = "qa_tester"
-    DEVOPS            = "devops"
+    SECURITY_ENGINEER  = "security_engineer"
+    BACKEND_DEVELOPER  = "backend_developer"
+    QA_TESTER          = "qa_tester"
+    DEVOPS             = "devops"
+    COMPLIANCE_AUDITOR = "compliance_auditor"

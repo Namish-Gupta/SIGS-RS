@@ -68,6 +68,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_event_type
 CREATE INDEX IF NOT EXISTS idx_audit_sensor_id
     ON audit.security_log (sensor_id);
 
+-- Enforce immutability on audit log (SRS REQ-SE-4)
+CREATE OR REPLACE FUNCTION audit.prevent_tampering()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'audit.security_log is immutable: UPDATE and DELETE operations are prohibited (SRS REQ-SE-4)';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_audit_immutable ON audit.security_log;
+CREATE TRIGGER trg_audit_immutable
+    BEFORE UPDATE OR DELETE ON audit.security_log
+    FOR EACH ROW
+    EXECUTE FUNCTION audit.prevent_tampering();
+
 CREATE TABLE IF NOT EXISTS config.middleware_settings (
     key         VARCHAR(128) PRIMARY KEY,
     value       JSONB        NOT NULL,

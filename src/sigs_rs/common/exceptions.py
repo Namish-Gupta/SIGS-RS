@@ -75,3 +75,9 @@ class ConfigError(SIGSError):
 
 class ProductionDatabaseError(ConfigError):
     """DATABASE_URL points to a non-staging host (SRS REQ-SF-1)."""
+
+
+# ─── Compliance (BR-3) ────────────────────────────────────────────────────────
+
+class ComplianceLockoutError(SIGSError):
+    """Raised when simulation testing is suspended due to compliance guideline revisions (SRS BR-3)."""

@@ -286,6 +286,14 @@ class RawTelemetryPacket(BaseModel):
 
     # ── Cross-field validators ────────────────────────────────────────────────
 
+    @field_validator("sensor_id")
+    @classmethod
+    def _validate_sensor_id(cls, v: str) -> str:
+        trimmed = v.strip()
+        if not trimmed or len(trimmed) < SENSOR_ID_MIN_LEN:
+            raise ValueError("sensor_id cannot be empty or whitespace-only")
+        return v
+
     @model_validator(mode="after")
     def _unit_matches_resource_type(self) -> "RawTelemetryPacket":
         """

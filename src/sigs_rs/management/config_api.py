@@ -9,10 +9,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, status
 
-from sigs_rs.auth.dependencies import require_audit_read_access, require_security_engineer, require_status_access
+from sigs_rs.auth.dependencies import (
+    require_audit_read_access,
+    require_compliance_auditor_or_security_engineer,
+    require_security_engineer,
+    require_status_access,
+)
 from sigs_rs.management.config_service import ConfigService
 from sigs_rs.schemas import (
     AnonymizerConfig,
+    ComplianceAuditRequest,
+    ComplianceGuidelineRevisionRequest,
+    ComplianceStatusResponse,
     ConfigUpdateResponse,
     InspectorConfig,
     MiddlewareStatusResponse,
@@ -97,3 +105,50 @@ async def get_middleware_status(
 ) -> MiddlewareStatusResponse:
     """Return live status of inspector, anonymizer, queue, circuit breaker, and pipeline."""
     return await ConfigService.get_middleware_status(request)
+
+
+@router.get(
+    "/compliance/status",
+    response_model=ComplianceStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get compliance guideline and lockout status (SRS REQ-PA-2, BR-3)",
+    description="Retrieve active privacy compliance guideline version and lockout state.",
+)
+async def get_compliance_status(
+    request: Request,
+    user: UserInfo = Depends(require_audit_read_access),
+) -> ComplianceStatusResponse:
+    """Return compliance guideline version and lockout state."""
+    return await ConfigService.get_compliance_status(request)
+
+
+@router.put(
+    "/compliance/guideline",
+    response_model=ConfigUpdateResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Revise privacy compliance guidelines (SRS BR-3)",
+    description="Revise compliance guidelines, immediately suspending all simulation testing until formal audit signoff (SRS BR-3). Restricted to Security Engineers and Compliance Auditors.",
+)
+async def revise_compliance_guideline(
+    request: Request,
+    body: ComplianceGuidelineRevisionRequest,
+    user: UserInfo = Depends(require_compliance_auditor_or_security_engineer),
+) -> ConfigUpdateResponse:
+    """Revise compliance guidelines and trigger immediate compliance lockout."""
+    return await ConfigService.revise_compliance_guideline(request, body, user)
+
+
+@router.post(
+    "/compliance/audit-signoff",
+    response_model=ConfigUpdateResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Compliance audit signoff and lockout resumption (SRS BR-3)",
+    description="Resume simulation testing following formal audit of the Privacy Anonymizer pipeline by the compliance team.",
+)
+async def compliance_audit_signoff(
+    request: Request,
+    body: ComplianceAuditRequest,
+    user: UserInfo = Depends(require_compliance_auditor_or_security_engineer),
+) -> ConfigUpdateResponse:
+    """Formal compliance audit signoff to lift BR-3 compliance lockout and resume testing."""
+    return await ConfigService.compliance_audit_signoff(request, body, user)

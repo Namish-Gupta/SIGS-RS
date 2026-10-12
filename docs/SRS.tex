@@ -1,0 +1,686 @@
+% Automatically converted from the supplied Word document.
+% Compile with XeLaTeX to preserve the original font families and Unicode text.
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage{fontspec}
+\setmainfont{Tinos}
+\setsansfont{Arimo}
+\setmonofont{DejaVu Sans Mono}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{fvextra}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{etoolbox}
+\usepackage{xcolor}
+\usepackage{xurl}
+
+\hypersetup{hidelinks}
+\geometry{letterpaper,left=0.90in,right=0.90in,top=0.55in,bottom=0.50in,headheight=14pt,headsep=42pt,includehead}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.080in}
+\setlength{\emergencystretch}{2em}
+\renewcommand{\baselinestretch}{1.08}
+
+% Running header used by the Word template.
+\fancypagestyle{srs}{%
+  \fancyhf{}
+  \fancyhead[L]{\color{gray}\fontsize{10}{11}\selectfont\bfseries\itshape Software Requirements Specification for Secure IoT Gateway Simulation for Resource Sensing}
+  \fancyhead[R]{\color{gray}\fontsize{10}{11}\selectfont\bfseries\itshape Page \thepage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+\fancypagestyle{titlepage}{%
+  \fancyhf{}
+  \fancyfoot[C]{\color{gray}\fontsize{9}{10}\selectfont\bfseries\itshape Copyright © 1999 by Karl E. Wiegers. Permission is granted to use, modify, and distribute this document.}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+\pagestyle{srs}
+
+% Heading hierarchy and spacing from the source template.
+\setcounter{secnumdepth}{4}
+\renewcommand{\thesection}{\arabic{section}}
+\renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+\renewcommand{\theparagraph}{\thesubsubsection.\arabic{paragraph}}
+
+\titleformat{\section}[hang]
+  {\bfseries\fontsize{18}{20}\selectfont}
+  {\thesection.}{0.35in}{}
+\titlespacing*{\section}{0pt}{0.333in}{0.167in}
+\titleformat{\subsection}[hang]
+  {\bfseries\fontsize{14}{16}\selectfont}
+  {\thesubsection}{0.30in}{}
+\titlespacing*{\subsection}{0pt}{0.194in}{0.194in}
+\titleformat{\subsubsection}[hang]
+  {\bfseries\fontsize{12}{14}\selectfont}
+  {\thesubsubsection}{0.20in}{}
+\titlespacing*{\subsubsection}{0pt}{0.167in}{0.115in}
+\titleformat{\paragraph}[hang]
+  {\bfseries\itshape\fontsize{11}{12}\selectfont}
+  {\theparagraph}{0.18in}{}
+\titlespacing*{\paragraph}{0pt}{0.167in}{0.042in}
+
+\setlist[itemize,1]{label=\textbullet,leftmargin=0.50in,labelsep=0.20in,itemsep=0.090in,topsep=0.055in,parsep=0pt,partopsep=0pt}
+\setlist[itemize,2]{label=\raisebox{0.16ex}{\scriptsize$\circ$},leftmargin=0.36in,labelsep=0.14in,itemsep=0.050in,topsep=0.035in,parsep=0pt,partopsep=0pt}
+
+\newcommand{\appendixheading}[1]{%
+  \par\vspace{0.083in}%
+  {\bfseries\fontsize{18}{20}\selectfont #1\par}%
+  \vspace{0.167in}%
+}
+\newcommand{\tocline}[3]{%
+  \noindent\hspace*{#1}%
+  \parbox[t]{\dimexpr\linewidth-#1\relax}{#2\leaders\hbox{.}\hfill\makebox[0.20in][r]{#3}}\par
+}
+
+\begin{document}
+\thispagestyle{titlepage}
+\newgeometry{letterpaper,left=1in,right=1in,top=0.75in,bottom=0.50in}
+\vspace*{0.10in}
+\noindent\rule{\linewidth}{4.5pt}
+
+\vspace{0.48in}
+\begin{flushright}
+{\sffamily\bfseries\fontsize{32}{34}\selectfont Software Requirements\\Specification\par}
+\vspace{0.49in}
+{\sffamily\bfseries\fontsize{20}{22}\selectfont for\par}
+\vspace{0.35in}
+{\sffamily\bfseries\fontsize{32}{34}\selectfont Secure IoT Gateway\\Simulation for Resource\\Sensing\par}
+\vspace{0.62in}
+{\sffamily\bfseries\fontsize{14}{16}\selectfont Version 1.0 approved\par}
+\vspace{0.58in}
+{\sffamily\bfseries\fontsize{14}{16}\selectfont Prepared by Namish Gupta\par}
+\vspace{0.58in}
+{\sffamily\bfseries\fontsize{14}{16}\selectfont Vellore Institute of Technology, Chennai\par}
+\vspace{0.58in}
+{\sffamily\bfseries\fontsize{14}{16}\selectfont 17\textsuperscript{th} July, 2026\par}
+\end{flushright}
+\restoregeometry
+\clearpage
+\pagenumbering{roman}
+\setcounter{page}{2}
+\thispagestyle{srs}
+\vspace*{-0.65in}
+{\bfseries\fontsize{18}{20}\selectfont Table of Contents\par}
+\vspace{0.17in}
+\begingroup
+\fontsize{11}{11}\selectfont
+\setlength{\parskip}{0pt}
+
+\tocline{0.00in}{\textbf{Table of Contents}}{ii}
+\tocline{0.00in}{\textbf{Revision History}}{ii}
+\tocline{0.00in}{\textbf{1.   Introduction}}{1}
+\tocline{0.25in}{1.1   Purpose}{1}
+\tocline{0.25in}{1.2   Document Conventions}{1}
+\tocline{0.25in}{1.3   Intended Audience and Reading Suggestions}{1}
+\tocline{0.25in}{1.4   Product Scope}{1}
+\tocline{0.25in}{1.5   References}{1}
+\tocline{0.00in}{\textbf{2.   Overall Description}}{2}
+\tocline{0.25in}{2.1   Product Perspective}{2}
+\tocline{0.25in}{2.2   Product Functions}{2}
+\tocline{0.25in}{2.3   User Classes and Characteristics}{2}
+\tocline{0.25in}{2.4   Operating Environment}{2}
+\tocline{0.25in}{2.5   Design and Implementation Constraints}{2}
+\tocline{0.25in}{2.6   User Documentation}{2}
+\tocline{0.25in}{2.7   Assumptions and Dependencies}{3}
+\tocline{0.00in}{\textbf{3.   External Interface Requirements}}{3}
+\tocline{0.25in}{3.1   User Interfaces}{3}
+\tocline{0.25in}{3.2   Hardware Interfaces}{3}
+\tocline{0.25in}{3.3   Software Interfaces}{3}
+\tocline{0.25in}{3.4   Communications Interfaces}{3}
+\tocline{0.00in}{\textbf{4.   System Features}}{4}
+\tocline{0.25in}{4.1   System Feature 1}{4}
+\tocline{0.25in}{4.2   System Feature 2 (and so on)}{4}
+\tocline{0.00in}{\textbf{5.   Other Nonfunctional Requirements}}{4}
+\tocline{0.25in}{5.1   Performance Requirements}{4}
+\tocline{0.25in}{5.2   Safety Requirements}{5}
+\tocline{0.25in}{5.3   Security Requirements}{5}
+\tocline{0.25in}{5.4   Software Quality Attributes}{5}
+\tocline{0.25in}{5.5   Business Rules}{5}
+\tocline{0.00in}{\textbf{6.   Other Requirements}}{5}
+\tocline{0.00in}{\textbf{Appendix A: Glossary}}{5}
+\tocline{0.00in}{\textbf{Appendix B: Analysis Models}}{5}
+\tocline{0.00in}{\textbf{Appendix C: To Be Determined List}}{6}
+\endgroup
+\vspace{0.38in}
+{\bfseries\fontsize{18}{20}\selectfont Revision History\par}
+\vspace{0.17in}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{|>{\bfseries}p{1.43in}|>{\bfseries}p{0.72in}|>{\bfseries}X|>{\bfseries}p{0.90in}|}
+\hline
+Name & Date & Reason For Changes & Version\\ \hline
+\rule{0pt}{0.22in} & & & \\ \hline
+\rule{0pt}{0.22in} & & & \\ \hline
+\end{tabularx}
+\clearpage
+\pagenumbering{arabic} % <--- DELETE THIS LINE
+\setcounter{page}{1}   % <--- DELETE THIS LINE
+
+\section{Introduction}
+\subsection{Purpose }
+\subsubsection{Product Identification}
+\textbf{Product Name:} Secure IoT Gateway Simulation for Resource Sensing (SIGS-RS) \\\textbf{Release/Revision Number:} Version 1.0.0\par
+\subsubsection{Product Scope}
+The \textbf{Secure IoT Gateway Simulation for Resource Sensing} is a backend network software engine designed to model, ingest, and process telemetry data from a theoretical community sensor grid.\par
+This Software Requirements Specification (SRS) covers the \textbf{backend simulation engine and the middleware security layer} exclusively. The scope of the product detailed in this document includes:\par
+\begin{itemize}
+\item \textbf{Telemetry Ingestion \& Simulation:} The core engine responsible for simulating high-volume, concurrent IoT packet streams representing community resource metrics (e.g., water, energy, or air quality data).
+\item \textbf{The Anomalous Packet Inspector:} A primary subsystem of the middleware layer. This document covers the logic and thresholds for the sliding-window algorithm used to evaluate real-time data rates and payload integrity, as well as the protocols for dropping spoofed or malicious packets.
+\item \textbf{The Privacy Anonymizer:} The secondary subsystem of the middleware layer. This document defines the data-masking pipeline that intercepts verified packets and strips personally identifiable information (PII)—specifically geolocation metadata—prior to database persistence.
+\end{itemize}
+\textbf{Out of Scope:} This SRS covers only the backend gateway simulation and middleware components. It \textbf{does not} include requirements for physical IoT sensor hardware, firmware development, or the frontend graphical user interface (GUI) used for end-user data visualization.\par
+\vspace{0.08in}
+\subsection{Document Conventions}
+\subsubsection{Document Conventions}
+\clearpage
+This Software Requirements Specification (SRS) for the Secure IoT Gateway Simulation adheres to the IEEE 830-1998 standard for structural design and organization. To ensure clarity and readability throughout the document, the following typographical conventions are strictly applied:\par
+\begin{itemize}
+\item \textbf{Bold Text:} Utilized to identify primary system modules, subsystems, and critical architectural components (e.g., \textbf{Anomalous Packet Inspector}, \textbf{Privacy Anonymizer}).
+\item \emph{Italic Text:} Applied to highlight specific algorithms, data properties, and internal terminology (e.g., \emph{sliding-window algorithm}, \emph{geolocation metadata}, \emph{telemetry payloads}).
+\item \texttt{Monospace Text}: Reserved for code snippets, API endpoints, data formats, and configuration parameters.
+\end{itemize}
+\subsubsection{Requirement Prioritization}
+Regarding the prioritization of functional and non-functional requirements, priorities are \textbf{not} assumed to be inherited from higher-level parent categories. To ensure granular control during the development and testing of the middleware security layers, every individual detailed requirement statement is explicitly assigned its own distinct priority level (e.g., High, Medium, or Low) based on its criticality to the system's core objectives.\par
+\vspace{0.08in}
+\subsection{Intended Audience and Reading Suggestions}
+\subsubsection{Intended Audience and Document Organization}
+This Software Requirements Specification (SRS) is intended for a technical and managerial audience involved in the development and lifecycle of the Secure IoT Gateway Simulation. The primary readers include \textbf{Backend Developers}, \textbf{Security Engineers}, \textbf{Quality Assurance (QA) Testers}, and \textbf{Project Managers}.\par
+The remainder of this document is organized to progress from a high-level architectural overview to granular technical specifications:\par
+\begin{itemize}
+\item \textbf{Section 2: Overall Description}
+\end{itemize}
+Provides context on the system environment, user classes, and general constraints of the community sensor grid.\par
+\begin{itemize}
+\item \textbf{Section 3: System Features}
+\end{itemize}
+Contains the core functional requirements, detailing the backend network simulation engine, the \emph{Anomalous Packet Inspector} (including the sliding-window algorithm and threshold metrics), and the \emph{Privacy Anonymizer} (detailing the data-masking pipeline for geolocation metadata).\par
+\begin{itemize}
+\item \textbf{Section 4: Non-Functional Requirements}
+\end{itemize}
+Outlines performance expectations, security standards, and system reliability metrics.\par
+\subsubsection{Suggested Reading Sequence}
+To make the most efficient use of this document, we recommend the following reading sequences tailored by role:\par
+\begin{itemize}
+\item \textbf{Project Managers:} Read Sections 1 and 2 to grasp the product scope, operating environment, and overarching system goals without getting immersed in granular algorithmic details.
+\item \textbf{Backend Developers \& Security Engineers:} Read the document in its entirety. Focus heavily on Section 3 to understand the exact payload validation rules, data rate thresholds, and geolocation stripping mechanics required for the middleware implementation.
+\item \textbf{QA Testers:} Begin with the overviews in Sections 1 and 2 for context, then concentrate on Sections 3 and 4 to design robust test cases around simulated packet ingestion rates, malicious packet-dropping triggers, and database privacy compliance.
+\end{itemize}
+\vspace{0.08in}
+\subsection{Product Scope}
+\subsubsection{Product Purpose and Description}
+The \textbf{Secure IoT Gateway Simulation for Resource Sensing} is a backend network simulation engine designed to model a community sensor grid and process high-volume telemetry data. Its primary purpose is to serve as a robust testing environment to validate a custom middleware security layer engineered to sanitize, protect, and anonymize incoming IoT traffic before it reaches persistent storage.\par
+\subsubsection{Objectives and Benefits}
+The system is built to achieve two primary technical objectives:\par
+\begin{itemize}
+\item \textbf{Ensure Data Integrity:} By utilizing the \textbf{Anomalous Packet Inspector}, the system protects the backend by evaluating incoming data rates and payloads against baseline thresholds via a sliding-window algorithm, automatically dropping spoofed or malicious packets.
+\item \textbf{Enforce Data Privacy:} By routing verified packets through the \textbf{Privacy Anonymizer}, the system ensures user safety by stripping personally identifiable geolocation metadata from the sensing logs prior to database insertion.
+\end{itemize}
+\subsubsection{Alignment with Business Strategies}
+This software directly supports the corporate strategic goal of pioneering secure, privacy-first smart-community infrastructure. By utilizing a software-based simulation engine rather than deploying physical hardware for early-stage testing, the organization significantly reduces R\&D overhead, accelerates iterative testing, and ensures that the eventual physical deployment complies with stringent data privacy regulations.\par
+\emph{Note: For a comprehensive breakdown of the long-term strategic roadmap, market positioning, and financial objectives, please refer to the separate }\textbf{\emph{Secure IoT Gateway Vision and Scope Document}}\emph{.}\par
+\vspace{0.08in}
+\subsection{References}
+\subsubsection{Referenced Documents}
+The following documents and standards are referenced throughout this Software Requirements Specification. They provide essential context, strategic direction, and compliance guidelines for the Secure IoT Gateway Simulation:\par
+\begin{itemize}
+\item \textbf{Secure IoT Gateway Vision and Scope Document}
+\begin{itemize}
+\item \textbf{Author:} Enterprise Strategy Team
+\item \textbf{Version:} 1.2
+\item \textbf{Date:} March 15, 2026
+\item \textbf{Location:} Internal Corporate SharePoint Repository ([\url{https://intranet.corp/docs/vision-scope-v1.2.pdf}])
+\item \textbf{Description:} Outlines the long-term business strategy, financial objectives, and market positioning for the broader smart-community infrastructure project.
+\end{itemize}
+\item \textbf{IEEE Recommended Practice for Software Requirements Specifications}
+\begin{itemize}
+\item \textbf{Author:} IEEE Computer Society
+\item \textbf{Version:} IEEE Std 830-1998
+\item \textbf{Date:} October 20, 1998
+\item \textbf{Location:} IEEE Xplore Digital Library ([\url{https://ieeexplore.ieee.org/document/720574}])
+\item \textbf{Description:} Defines the structural and typographical standards adhered to in the creation of this SRS document.
+\end{itemize}
+\item \textbf{Data Anonymization and Privacy Compliance Guidelines}
+\begin{itemize}
+\item \textbf{Author:} Corporate Security and Legal Department
+\item \textbf{Version:} 3.0
+\item \textbf{Date:} January 10, 2026
+\item \textbf{Location:} Central Engineering Wiki ([\url{https://wiki.corp/security/privacy-guidelines-v3}])
+\item \textbf{Description:} Dictates the specific regulatory requirements and internal protocols used by the \textbf{Privacy Anonymizer} pipeline to successfully strip personally identifiable geolocation metadata.
+\end{itemize}
+\item \textbf{Community Sensor Grid API Specification}
+\begin{itemize}
+\item \textbf{Author:} IoT Integration Team
+\item \textbf{Version:} 1.0.4
+\item \textbf{Date:} June 5, 2026
+\item \textbf{Location:} Internal GitHub Repository ([\url{https://github.corp/iot-team/sensor-grid-api/docs}])
+\item \textbf{Description:} Details the payload structures and transmission rates for the external virtual data generator that interfaces with the simulation engine, providing the baseline metrics required by the \textbf{Anomalous Packet Inspector}.
+\end{itemize}
+\end{itemize}
+\vspace{0.08in}
+\section{Overall Description}
+\subsection{Product Perspective}
+\subsubsection{Product Context and Origin}
+The \textbf{Secure IoT Gateway Simulation for Resource Sensing} is a new, self-contained software product acting as the foundational R\&D testing environment for a broader, upcoming physical smart-community grid. Rather than replacing an existing system, this simulation engine acts as a precursor component to the larger enterprise physical gateway system. It allows developers to rigorously test high-volume telemetry processing and the custom middleware security layer in a risk-free, simulated environment before committing to expensive hardware deployments.\par
+\subsubsection{System Interfaces and Interconnections}
+Within the overarching enterprise architecture, this software serves as the intermediary routing and filtering layer. It interfaces with an external virtual data generator (simulating the physical IoT community sensors) via standard MQTT/HTTP protocols, and outputs sanitized telemetry logs to an external persistent database. The internal architecture dictates that all ingested traffic must sequentially pass through the middleware's two primary security subsystems—the \textbf{Anomalous Packet Inspector} and the \textbf{Privacy Anonymizer}—before reaching the database interface.\par
+\subsubsection{Architectural Diagram}
+Below is a simplified structural representation of the subsystem interconnections, external interfaces, and the directional flow of telemetry data:\par
+\begin{Verbatim}[fontsize=\fontsize{10}{10.5}\selectfont]
+[External Virtual Sensor Grid] --> (Raw Telemetry Packets)
+                                         |
+                                         v
++-----------------------------------------------------------------+
+|          Secure IoT Gateway Simulation Engine                   |
+|                                                                 |
+|  1. [Anomalous Packet Inspector]                                |
+|       - Uses sliding-window algorithm for threshold checks      |
+|       - Drops spoofed/malicious packets                         |
+|                      |                                          |
+|                      v (Verified Packets)                       |
+|                                                                 |
+|  2. [Privacy Anonymizer]                                        |
+|       - Strips personally identifiable geolocation metadata     |
+|       - Prepares sanitized telemetry data for storage           |
++-----------------------------------------------------------------+
+                                         |
+                                         v (Sanitized Logs)
+                             [External Persistent Database]
+\end{Verbatim}
+
+\subsection{Product Functions}
+\subsubsection{Major System Features and Functions}
+The Secure IoT Gateway Simulation for Resource Sensing operates primarily as a backend processing and routing engine. The major functions the system performs can be summarized into the following high-level capabilities:\par
+\begin{itemize}
+\item \textbf{Telemetry Ingestion:} Receives and models high-volume, concurrent simulated packet streams representing community resource metrics (e.g., water, energy, air quality).
+\item \textbf{Real-Time Threat Detection:} Utilizes the \textbf{Anomalous Packet Inspector} to continuously monitor incoming data rates and evaluate payload integrity against predefined baseline thresholds.
+\item \textbf{Automated Threat Mitigation:} Automatically drops spoofed or malicious packets that exceed the anomaly thresholds calculated by the internal \emph{sliding-window algorithm}.
+\item \textbf{Data Sanitization:} Routes verified packets through the \textbf{Privacy Anonymizer} pipeline to detect and strip personally identifiable information (PII), specifically targeting sensitive \emph{geolocation metadata}.
+\item \textbf{Secure Data Persistence:} Forwards the fully sanitized and verified community sensing logs to the external persistent database for storage and future analysis.
+\end{itemize}
+\subsubsection{High-Level Data Flow Diagram}
+The following diagram illustrates the major functional groups of the system and how telemetry data flows through the simulation engine and middleware layers:\par
+\begin{Verbatim}[fontsize=\fontsize{10}{10.5}\selectfont]
+[Virtual Community Sensor Grid]
+               |
+               | (Raw Telemetry Data Stream)
+               v
++---------------------------------------------+
+|    Secure IoT Gateway Simulation Engine     |
+|                                             |
+|  +---------------------------------------+  |
+|  |       1. Telemetry Ingestion          |  |
+|  +---------------------------------------+  |
+|               |                             |
+|               v                             |
+|  +---------------------------------------+  |
+|  |   2. Anomalous Packet Inspector       |  |
+|  |  (Threshold Checks & Packet Dropping) |  |
+|  +---------------------------------------+  |
+|               |                             |
+|               v (Verified Packets Only)     |
+|                                             |
+|  +---------------------------------------+  |
+|  |       3. Privacy Anonymizer           |  |
+|  |  (Geolocation Metadata Stripping)     |  |
+|  +---------------------------------------+  |
+|                                             |
++---------------------------------------------+
+               |
+               | (Sanitized Sensing Logs)
+               v
+   [External Persistent Database]
+\end{Verbatim}
+
+\subsection{User Classes and Characteristics}
+\subsubsection{User Classes and Characteristics}
+Because the Secure IoT Gateway Simulation operates exclusively as a backend processing engine and middleware layer, its users are primarily technical personnel involved in the development, security configuration, and testing of the system. There are no traditional layperson end-users for this software. The user classes are categorized by their technical roles, privilege levels, and the specific subsystems they interact with.\par
+The user classes are distinguished below, with \textbf{Security Engineers} and \textbf{Backend Developers} designated as the most important primary users to satisfy, as their requirements dictate the core success of the middleware.\par
+\paragraph{Primary User Classes}
+\begin{itemize}
+\item \textbf{Security Engineers:}
+\begin{itemize}
+\item \textbf{Characteristics:} Highly technical users with deep expertise in network security, threat modeling, and data privacy regulations.
+\item \textbf{System Interaction:} This is the most critical user class. They are responsible for defining the baseline thresholds and configuration parameters for the \textbf{Anomalous Packet Inspector}. They dictate the rules for the \emph{sliding-window algorithm} and define the specific \emph{geolocation metadata} parameters that the \textbf{Privacy Anonymizer} must strip.
+\item \textbf{Privilege Level:} High. They require administrative access to modify security configurations and audit the sanitized telemetry logs.
+\end{itemize}
+\item \textbf{Backend Developers:}
+\begin{itemize}
+\item \textbf{Characteristics:} Experienced software engineers responsible for system architecture, API integration, and data pipeline management.
+\item \textbf{System Interaction:} They interface directly with the simulation engine to integrate external virtual sensor grids and connect the output pipeline to the persistent database. They require clear, programmatic access to system logs to debug the routing of \emph{telemetry payloads} through the middleware layers.
+\item \textbf{Privilege Level:} High. They require full access to the codebase, simulation environment, and database schemas.
+\end{itemize}
+\end{itemize}
+\paragraph{Secondary User Classes}
+\begin{itemize}
+\item \textbf{Quality Assurance (QA) Testers:}
+\begin{itemize}
+\item \textbf{Characteristics:} Technical users focused on system validation, stress testing, and edge-case discovery.
+\item \textbf{System Interaction:} They utilize the simulation engine to inject high volumes of standard traffic mixed with spoofed or malicious packets. Their primary goal is to validate that the \emph{sliding-window algorithm} drops malicious data at scale and that no unmasked \emph{geolocation metadata} leaks into the database.
+\item \textbf{Privilege Level:} Medium. They need execution privileges for the simulation engine and read-only access to the database to verify outputs.
+\end{itemize}
+\item \textbf{DevOps / System Administrators:}
+\begin{itemize}
+\item \textbf{Characteristics:} Infrastructure specialists focused on deployment, uptime, and system performance.
+\item \textbf{System Interaction:} They are responsible for deploying the simulation engine within the corporate testing environment, allocating computational resources for high-volume ingestion, and maintaining the connections to external databases.
+\item \textbf{Privilege Level:} Medium to High. They control the deployment environment but do not typically interact with the internal middleware algorithms.
+\end{itemize}
+\end{itemize}
+\vspace{0.08in}
+\subsection{Operating Environment}
+\subsubsection{Operating Environment}
+The Secure IoT Gateway Simulation is a highly concurrent backend service designed to process high-volume telemetry traffic. It is engineered to operate within modern, scalable server environments and relies on containerization for consistent deployment.\par
+\paragraph{Hardware Platform}
+The software does not run on physical IoT edge devices; instead, it requires robust backend infrastructure to simulate the heavy load of a community sensor grid.\par
+\begin{itemize}
+\item \textbf{Architecture:} x86\_64 or ARM64 multi-core server architectures.
+\item \textbf{Minimum Simulation Specs:} A minimum of 16 vCPUs and 32 GB of RAM is recommended to ensure the \textbf{Anomalous Packet Inspector} can compute the \emph{sliding-window algorithm} across thousands of concurrent connections without bottlenecking the ingestion pipeline.
+\end{itemize}
+\paragraph{Operating Systems}
+The system is built as a platform-agnostic, containerized application, but native deployment is officially supported and tested on Linux environments:\par
+\begin{itemize}
+\item \textbf{Primary OS:} Ubuntu 22.04 LTS (or newer).
+\item \textbf{Secondary OS:} CentOS Stream 9 or Alpine Linux (for lightweight container builds).
+\end{itemize}
+\paragraph{Software Ecosystem and Coexistence}
+The simulation engine acts as an intermediary node and must peacefully coexist and interface with several external components and third-party software layers:\par
+\begin{itemize}
+\item \textbf{Container Orchestration:} The engine runs within Docker containers and is designed to be orchestrated by Kubernetes (K8s) for horizontal scaling during stress-testing scenarios.
+\item \textbf{Message Brokers:} The ingestion layer must interface smoothly with standard IoT message brokers, primarily MQTT (e.g., Eclipse Mosquitto or EMQX) and HTTP REST APIs, to receive data from the external virtual sensor grid.
+\item \textbf{Persistent Storage Engine:} Once telemetry passes through the \textbf{Privacy Anonymizer}, the output pipeline connects directly to time-series or relational databases, such as TimescaleDB, InfluxDB, or PostgreSQL, to store the sanitized logs.
+\item \textbf{Virtual Data Generators:} The system coexists alongside Python or Go-based load-generation scripts that act as the simulated community sensor nodes, continuously pushing both legitimate and malicious \emph{telemetry payloads} into the network.
+\end{itemize}
+\vspace{0.08in}
+\subsection{Design and Implementation Constraints}
+\subsubsection{Design and Implementation Constraints}
+The development and architecture of the Secure IoT Gateway Simulation are bound by several strict technical, regulatory, and operational constraints:\par
+\begin{itemize}
+\item \textbf{Regulatory and Compliance Mandates:} The \textbf{Privacy Anonymizer} pipeline must strictly adhere to the internal \emph{Data Anonymization and Privacy Compliance Guidelines} (Version 3.0). Because the system simulates real-world community sensing logs, the stripping of personally identifiable \emph{geolocation metadata} must be absolute to comply with enterprise data protection standards modeling real-world regulations (e.g., GDPR, CCPA).
+\item \textbf{Algorithmic Performance Limits:} The \textbf{Anomalous Packet Inspector} utilizes a stateful \emph{sliding-window algorithm} to track real-time telemetry rates. This imposes severe memory and timing constraints. Developers must ensure the in-memory state tracking for thousands of concurrent virtual sensors does not exceed the maximum 32 GB RAM allocation or delay the ingestion pipeline by more than 15 milliseconds per packet.
+\item \textbf{Protocol Restrictions:} Inbound communication interfaces are strictly limited to MQTT and HTTP/HTTPS REST protocols to accurately mirror the eventual physical edge-device capabilities. Proprietary or non-standard IoT protocols cannot be used for the external virtual data generator interfaces.
+\item \textbf{Architectural Mandates:} The software must be fully containerized (Docker) and orchestration-ready (Kubernetes). Developers are constrained from using any OS-specific or hardware-dependent libraries that would break the platform-agnostic, microservices-based deployment model.
+\item \textbf{Database Interface Standards:} The output pipeline must be written to interface exclusively with the organization's pre-approved standard for persistent storage (PostgreSQL/TimescaleDB). The sanitized data schemas must perfectly match the existing upstream analytical database tables.
+\end{itemize}
+\vspace{0.08in}
+\subsection{User Documentation}
+Because the Secure IoT Gateway Simulation (SIGS-RS) operates exclusively as a backend processing engine and middleware layer, traditional layperson end-user manuals will not be provided. Instead, the user documentation is tailored for technical personnel (Security Engineers, Backend Developers, QA Testers, and DevOps) and focuses on deployment, API integration, and security configuration.
+
+The following documentation components will be delivered along with the software:
+
+\begin{itemize}
+\item \textbf{Middleware Configuration Guide:} A technical manual detailing the parameter tuning for the security layers. This includes defining baseline data-rate thresholds for the \textbf{Anomalous Packet Inspector} and mapping the specific JSON paths for \emph{geolocation metadata} that the \textbf{Privacy Anonymizer} must strip.
+\item \textbf{System Integration \& API Specification:} Developer-focused documentation outlining the expected MQTT/HTTP input schemas from the virtual sensor grid and the schemas for the sanitized data output to the persistent database.
+\item \textbf{Deployment and Orchestration Readme:} A step-by-step infrastructure guide covering Docker container build processes, environment variable configurations, and Kubernetes (K8s) deployment manifests.
+\end{itemize}
+
+\textbf{Delivery Formats and Standards:}
+\begin{itemize}
+\item \textbf{Markdown (.md):} All deployment instructions and core configuration guides will be written in standard Markdown and maintained directly within the project's Git version control repository.
+\item \textbf{OpenAPI (Swagger) 3.0:} The API specifications for telemetry ingestion will be generated and hosted using the OpenAPI standard, allowing developers to interactively test payload endpoints.
+\item \textbf{Enterprise Wiki (Confluence):} High-level architectural overviews, threat-modeling diagrams, and release notes will be published to the internal corporate wiki using standard engineering templates.
+\end{itemize}
+\subsection{Assumptions and Dependencies}
+\subsubsection{Assumptions}
+The successful deployment, execution, and validation of the Secure IoT Gateway Simulation (SIGS-RS) rely on the following assumed factors:
+\begin{itemize}
+\item \textbf{Data Generator Reliability:} It is assumed that the external virtual sensor grid (the load-generation scripts) is capable of sustaining high-volume, concurrent payload generation without localized crashing or bottlenecking. If the generator fails, the simulation engine's stress-testing capabilities cannot be accurately validated.
+\item \textbf{Payload Consistency:} The raw telemetry payloads transmitted via MQTT/HTTP will adhere to the baseline JSON structural schemas defined in the \emph{Community Sensor Grid API Specification}.
+\item \textbf{Database I/O Capacity:} The external persistent database (e.g., PostgreSQL or TimescaleDB) is assumed to be provisioned with sufficient compute and write-speed capacity to ingest the sanitized logs continuously. Insufficient database I/O will cause backpressure on the \textbf{Privacy Anonymizer} pipeline.
+\end{itemize}
+
+\subsubsection{Dependencies}
+The project has strict dependencies on the following external systems, software components, and organizational guidelines:
+\begin{itemize}
+\item \textbf{Infrastructure Availability:} The deployment of the simulation engine is entirely dependent on an available, pre-configured Kubernetes (K8s) cluster and a Docker container registry within the enterprise testing environment.
+\item \textbf{Message Broker Uptime:} Telemetry ingestion depends on the stability of a third-party MQTT broker (such as Eclipse Mosquitto or EMQX) to handle the initial routing of packets from the virtual grid to the gateway.
+\item \textbf{Compliance Framework:} The specific fields stripped by the \textbf{Privacy Anonymizer} are strictly dependent on the \emph{Data Anonymization and Privacy Compliance Guidelines (Version 3.0)}. Any subsequent updates to enterprise privacy policies will require immediate refactoring of the anonymization pipeline.
+\end{itemize}
+\section{External Interface Requirements}
+\subsection{User Interfaces}
+\subsubsection{User Documentation}
+Because the Secure IoT Gateway Simulation is a backend R\&D tool intended for technical personnel (Security Engineers, Backend Developers, and QA Testers), the delivered documentation will focus on system configuration, API integration, and deployment rather than traditional end-user manuals.\par
+The following documentation components will be delivered alongside the software:\par
+\begin{itemize}
+\item \textbf{Middleware Configuration Guide:} A comprehensive technical manual detailing the parameter tuning for the security layers. It will include instructions on defining baseline thresholds for the \textbf{Anomalous Packet Inspector}'s \emph{sliding-window algorithm} and mapping the specific rules for the \textbf{Privacy Anonymizer} to successfully identify and strip \emph{geolocation metadata}.
+\item \textbf{System Integration \& API Specification:} Developer-focused documentation outlining the expected MQTT/HTTP input schemas from the virtual sensor grid and the structural schemas for the sanitized data output to the persistent database.
+\item \textbf{Deployment and Orchestration Readme:} A step-by-step guide for DevOps and system administrators covering the Docker container build process, environment variable configuration, and Kubernetes (K8s) deployment manifests for scaling the simulation engine.
+\end{itemize}
+\subsubsection{Delivery Formats and Standards}
+To ensure seamless integration with the engineering team's existing workflows, the documentation will adhere to the following delivery formats:\par
+\begin{itemize}
+\item \textbf{Repository-Level Documentation:} All deployment instructions and core configuration guides will be written in standard Markdown (.md) format and stored directly within the project's version control repository.
+\item \textbf{API Documentation:} The System Integration \& API Specification will be generated and hosted using the OpenAPI (Swagger) 3.0 standard, allowing developers to interactively test payload ingestion endpoints.
+\item \textbf{Internal Wiki Integration:} High-level architectural overviews and release notes will be published to the corporate Confluence/Wiki, conforming to the enterprise engineering documentation templates.
+\end{itemize}
+\vspace{0.08in}
+\subsection{Hardware Interfaces}
+Because the Secure IoT Gateway Simulation (SIGS-RS) is exclusively a backend network software engine, it does not interface directly with physical IoT edge devices, environmental sensors, or localized hardware controllers (e.g., GPIO, I2C, or serial interfaces). All community sensing hardware is strictly theoretical and modeled by external load-generation software.
+
+The application interfaces with hardware only abstractly through the host operating system and container runtime (Docker). The logical hardware dependencies include:
+
+\begin{itemize}
+\item \textbf{Network Interface Controllers (NICs):} The system relies on the host server's standard enterprise network adapters to receive high-throughput TCP/IP traffic (MQTT and HTTP payloads) from the virtual sensor grid and to transmit sanitized logs to the external database.
+\item \textbf{Compute and Memory Allocation:} The \textbf{Anomalous Packet Inspector} relies heavily on the host hardware's CPU and RAM to maintain the stateful tracking of the \emph{sliding-window algorithm}. The software requires the hardware to provide standard x86\_64 or ARM64 multi-core processing, with a minimum allocation of 16 vCPUs and 32 GB of RAM to prevent hardware-induced latency or unintended packet dropping.
+\end{itemize}
+\subsection{Software Interfaces}
+The Secure IoT Gateway Simulation (SIGS-RS) operates as a middleware routing engine and must interface seamlessly with several external software components to ingest, process, and persist telemetry data.
+
+\begin{itemize}
+\item \textbf{MQTT Message Broker:}
+\begin{itemize}
+\item \textbf{Component:} Eclipse Mosquitto or EMQX (Version 2.0 or higher).
+\item \textbf{Purpose:} Acts as the primary ingestion gateway. The simulation engine subscribes to predefined MQTT topics to receive the high-frequency \emph{telemetry payloads} generated by the external virtual sensor grid.
+\item \textbf{Data Flow (Inbound):} The system receives raw, JSON-formatted messages containing simulated resource metrics (e.g., timestamp, sensor ID, resource type, payload values, and raw \emph{geolocation metadata}).
+\end{itemize}
+
+\item \textbf{Persistent Storage Engine (Database):}
+\begin{itemize}
+\item \textbf{Component:} PostgreSQL 15+ or TimescaleDB.
+\item \textbf{Purpose:} Serves as the long-term storage destination for data that has successfully passed through both the \textbf{Anomalous Packet Inspector} and the \textbf{Privacy Anonymizer}.
+\item \textbf{Data Flow (Outbound):} The simulation engine utilizes standard database connection pooling to INSERT sanitized, verified telemetry logs. The outbound data schema strictly matches the upstream analytical tables and is completely stripped of personally identifiable information.
+\end{itemize}
+
+\item \textbf{Container Orchestration (Kubernetes API):}
+\begin{itemize}
+\item \textbf{Component:} Kubernetes (K8s) Control Plane.
+\item \textbf{Purpose:} The engine exposes a lightweight HTTP REST interface (e.g., \texttt{/health} and \texttt{/metrics}) to allow the orchestration software to monitor system health, measure ingestion latency, and trigger horizontal pod autoscaling during peak stress-testing scenarios.
+\end{itemize}
+\end{itemize}
+\subsection{Communications Interfaces}
+The Secure IoT Gateway Simulation (SIGS-RS) requires robust, low-latency, and highly secure communication channels to handle continuous telemetry ingestion and data persistence. All data in transit must comply with enterprise encryption standards.
+
+\begin{itemize}
+\item \textbf{Ingestion Protocols (MQTT):}
+\begin{itemize}
+\item The primary communication method between the external virtual sensor grid and the simulation engine is MQTT (Message Queuing Telemetry Transport) over TCP/IP (Port 8883).
+\item All MQTT traffic must be encrypted using TLS 1.2 or higher (TLS 1.3 preferred) using X.509 client certificates to authenticate the virtual grid connections before they reach the \textbf{Anomalous Packet Inspector}.
+\end{itemize}
+
+\item \textbf{RESTful API Communications (HTTP/HTTPS):}
+\begin{itemize}
+\item The system exposes management, health-check, and configuration endpoints via HTTP/HTTPS (Port 443).
+\item Orchestration tools (like Kubernetes) poll the \texttt{/health} and \texttt{/metrics} endpoints via standard HTTP GET requests.
+\item Security engineers updating the \textbf{Privacy Anonymizer} configurations will interface via HTTPS REST endpoints authenticated using OAuth 2.0 and JSON Web Tokens (JWT).
+\end{itemize}
+
+\item \textbf{Database Communications:}
+\begin{itemize}
+\item The simulation engine communicates with the external persistent database (e.g., PostgreSQL or TimescaleDB) utilizing native TCP-based connection pooling (typically Port 5432).
+\item This internal network traffic must be routed through a secure virtual private cloud (VPC) subnet, utilizing strict SSL mode (\texttt{sslmode=verify-full}) to prevent internal packet sniffing of the sanitized logs.
+\end{itemize}
+\end{itemize}
+\section{System Features}
+This section details the core functional requirements of the Secure IoT Gateway Simulation for Resource Sensing (SIGS-RS). To best reflect the system's architectural pipeline and the sequential flow of telemetry data, these functional requirements are logically organized by middleware subsystem. 
+
+The requirements are divided into the system's three primary processing layers:
+\begin{itemize}
+\item \textbf{4.1 Telemetry Ingestion:} The baseline capabilities for receiving, parsing, and queuing high-volume concurrent payload streams from the virtual sensor grid.
+\item \textbf{4.2 Anomalous Packet Inspector:} The sliding-window algorithms, baseline threshold metrics, and automated packet-dropping protocols used to identify and mitigate malicious traffic.
+\item \textbf{4.3 Privacy Anonymizer:} The compliance and data-masking pipeline responsible for identifying and stripping personally identifiable geolocation metadata prior to database persistence.
+\end{itemize}
+\subsection{Telemetry Ingestion Pipeline}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.1.1}Description and Priority\par\vspace{0.083in}
+\begin{list}{}{\setlength{\leftmargin}{0.94in}\setlength{\rightmargin}{0pt}}\item[]
+This feature encompasses the core capability to securely receive, parse, and queue high-volume concurrent telemetry streams (via MQTT and HTTP) generated by the external virtual sensor grid. \textbf{Priority: High.} It is the foundational entry point for all data entering the simulation engine; without it, downstream middleware testing cannot occur.
+\end{list}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.1.2}Stimulus/Response Sequences\par\vspace{0.083in}
+\begin{list}{}{\setlength{\leftmargin}{0.94in}\setlength{\rightmargin}{0pt}}\item[]
+\textbf{Stimulus:} The virtual sensor grid initiates a secure MQTT connection and transmits a batch of JSON telemetry payloads.\\
+\textbf{Response:} The system authenticates the TLS certificate, accepts the payload, and routes it to the internal ingestion queue.\\
+\textbf{Stimulus:} An external client attempts to send malformed JSON or exceeds the maximum payload size limit.\\
+\textbf{Response:} The system immediately drops the connection, discards the packet, and logs an ingestion error code without passing data to the middleware.
+\end{list}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.1.3}Functional Requirements\par\vspace{0.083in}
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.85in][l]{REQ-TI-1:} The system shall accept secure MQTT connections exclusively on Port 8883 using TLS 1.2 or higher.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.85in][l]{REQ-TI-2:} The system shall successfully parse incoming telemetry payloads formatted strictly as JSON according to the Community Sensor Grid API schema.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.85in][l]{REQ-TI-3:} The system shall reject and drop any individual telemetry packet that exceeds a maximum payload size of 512 KB to prevent memory exhaustion.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.85in][l]{REQ-TI-4:} The system shall enqueue verified, successfully parsed packets into an in-memory buffer for sequential processing by the Anomalous Packet Inspector.\par
+\subsection{Anomalous Packet Inspector}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.2.1}Description and Priority\par\vspace{0.083in}
+\begin{list}{}{\setlength{\leftmargin}{0.94in}\setlength{\rightmargin}{0pt}}\item[]
+The Anomalous Packet Inspector is the primary security middleware subsystem. It utilizes an in-memory sliding-window algorithm to evaluate the frequency and integrity of incoming telemetry payloads. Its purpose is to detect and mitigate spoofing attacks, Denial of Service (DoS) attempts, and corrupted sensor data before it penetrates further into the network. \textbf{Priority: High.}
+\end{list}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.2.2}Stimulus/Response Sequences\par\vspace{0.083in}
+\begin{list}{}{\setlength{\leftmargin}{0.94in}\setlength{\rightmargin}{0pt}}\item[]
+\textbf{Stimulus:} The ingestion pipeline forwards a queued telemetry packet to the Inspector.\\
+\textbf{Response:} The algorithm calculates the current packet rate for the originating sensor ID. If the rate and payload values fall within baseline thresholds, the packet is flagged as 'Verified' and forwarded to the Privacy Anonymizer.\\
+\textbf{Stimulus:} A sensor exceeds the defined transmission rate (e.g., a burst of 100 packets in one second) or submits statistically impossible resource metrics.\\
+\textbf{Response:} The Inspector immediately drops the offending packet(s) from memory and records a violation in the internal security log.
+\end{list}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.2.3}Functional Requirements\par\vspace{0.083in}
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-API-1:} The system shall maintain an in-memory state tracking the timestamp of all packets received from each unique sensor ID over a rolling 10-second sliding window.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-API-2:} The system shall drop any incoming packet if the sliding window indicates the originating sensor ID has exceeded a transmission rate of 50 packets per 10 seconds.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-API-3:} The system shall evaluate the internal payload metrics and drop packets containing impossible environmental state variables (e.g., negative power consumption, or air quality indices exceeding standard bounds).\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-API-4:} The system shall compute the sliding-window validation and payload evaluation for each packet in under 15 milliseconds to prevent ingestion pipeline bottlenecks.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-API-5:} Upon dropping a packet, the system shall silently discard the data without sending a rejection acknowledgment to the external client, mitigating network reflection attacks.\par
+\subsection{Privacy Anonymizer}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.3.1}Description and Priority\par\vspace{0.083in}
+\begin{list}{}{\setlength{\leftmargin}{0.94in}\setlength{\rightmargin}{0pt}}\item[]
+The Privacy Anonymizer is the secondary subsystem of the middleware layer. It functions as a strict compliance and data-masking pipeline that intercepts verified telemetry packets to detect and strip personally identifiable information (PII)—specifically sensitive geolocation metadata—before the logs are persisted to the database. \textbf{Priority: High.} Failure to strip this data violates enterprise privacy compliance guidelines.
+\end{list}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.3.2}Stimulus/Response Sequences\par\vspace{0.083in}
+\begin{list}{}{\setlength{\leftmargin}{0.94in}\setlength{\rightmargin}{0pt}}\item[]
+\textbf{Stimulus:} The Anomalous Packet Inspector forwards a 'Verified' telemetry packet to the Anonymizer pipeline.\\
+\textbf{Response:} The system parses the JSON payload, identifies restricted keys (e.g., \texttt{latitude}, \texttt{longitude}, \texttt{mac\_address}), removes them, and forwards the sanitized payload to the database connection pool.\\
+\textbf{Stimulus:} The system encounters a payload structured in an unrecognized format where targeted PII keys cannot be safely isolated.\\
+\textbf{Response:} The system defaults to a fail-secure state, dropping the entire packet to prevent accidental PII leakage into persistent storage, and logging a schema compliance error.
+\end{list}
+
+\par\vspace{0.083in}\noindent\hspace*{0.44in}\makebox[0.69in][l]{4.3.3}Functional Requirements\par\vspace{0.083in}
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PA-1:} The system shall intercept all verified packets and apply a JSON masking function to eliminate \texttt{latitude}, \texttt{longitude}, and device-specific identifier fields.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PA-2:} The system shall execute the data-masking operations in strict adherence to the rules outlined in the \emph{Data Anonymization and Privacy Compliance Guidelines (Version 3.0)}.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PA-3:} The system shall format the successfully sanitized telemetry data into SQL \texttt{INSERT} queries compatible with the persistent PostgreSQL/TimescaleDB analytical schemas.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PA-4:} The system shall implement a fail-secure mechanism that automatically drops any packet if the JSON masking function throws a parsing exception, ensuring no raw data bypasses the filter.\par
+\section{Other Nonfunctional Requirements}
+\subsection{Performance Requirements}
+The performance of the Secure IoT Gateway Simulation (SIGS-RS) is critical. It must accurately model the high-stress environment of a physical community sensor grid while performing real-time security and privacy analysis. The system is designed to handle high concurrency with strict latency boundaries to prevent ingestion backpressure.
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PF-1:} \textbf{Throughput Capacity:} The simulation engine shall successfully ingest and process a sustained load of 50,000 telemetry packets per second from up to 10,000 concurrently connected virtual sensors.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PF-2:} \textbf{Processing Latency:} The combined middleware pipeline (Anomalous Packet Inspector and Privacy Anonymizer) shall complete the validation, metadata stripping, and database queuing for any individual packet in under 15 milliseconds.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PF-3:} \textbf{Memory Efficiency:} The stateful tracking required by the sliding-window algorithm shall be memory-optimized to operate stably utilizing no more than 24 GB of active RAM, ensuring safe overhead within the 32 GB minimum system environment to prevent Out-Of-Memory (OOM) failures.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-PF-4:} \textbf{Horizontal Scalability:} The containerized system shall be capable of stateless scaling, triggering Kubernetes horizontal pod autoscaling (HPA) events when sustained CPU utilization exceeds 75\% for more than 2 minutes.\par
+\subsection{Safety Requirements}
+Because the Secure IoT Gateway Simulation (SIGS-RS) operates strictly as a backend software simulation environment, there are no direct cyber-physical safety risks (e.g., bodily harm, physical equipment damage, or actuator malfunction) associated with its operation. "Safety" in this context pertains strictly to the protection of the enterprise infrastructure and the integrity of organizational data from runaway testing loads.
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SF-1:} \textbf{Environment Isolation:} The simulation engine shall only accept database connection strings targeting designated staging or testing clusters. The system must prevent the accidental injection of simulated telemetry data into live production environments to ensure data integrity.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SF-2:} \textbf{Infrastructure Protection (Circuit Breaker):} To prevent the simulation from inadvertently launching a Denial of Service (DoS) attack against the internal corporate network, the system shall implement a circuit breaker that immediately halts database ingestion and drops all incoming MQTT connections if outbound write latency exceeds 2000 milliseconds.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SF-3:} \textbf{Fail-Closed Architecture:} In the event of a catastrophic process failure (e.g., a crash within the Privacy Anonymizer container), the system must default to a fail-closed state where all routing ceases entirely, ensuring no unverified or unanonymized raw payloads can bypass the middleware.\par
+\subsection{Security Requirements}
+The security posture of the Secure IoT Gateway Simulation (SIGS-RS) is a core structural component. It is designed to enforce strict data privacy, prevent unauthorized configuration changes, and protect simulated telemetry data in transit across the enterprise network.
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SE-1:} \textbf{Encryption in Transit:} All external telemetry ingestion via MQTT must be encrypted using TLS 1.2 or higher, requiring valid X.509 client certificates for virtual sensor authentication prior to payload processing.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SE-2:} \textbf{API Access Control:} Access to the system's HTTP/HTTPS management and configuration endpoints shall be strictly authenticated using OAuth 2.0 and JSON Web Tokens (JWT). Unauthenticated requests must be immediately rejected with an HTTP 401 Unauthorized status.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SE-3:} \textbf{Database Connection Security:} The system shall communicate with the persistent storage database exclusively over a secure Virtual Private Cloud (VPC) subnet utilizing strict SSL mode (\texttt{sslmode=verify-full}).\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-SE-4:} \textbf{Audit Logging:} The system shall maintain an immutable, time-stamped security audit log recording all unauthorized API access attempts, dropped packet events generated by the Anomalous Packet Inspector, and any configuration changes made by Security Engineers.\par
+\subsection{Software Quality Attributes}
+The Secure IoT Gateway Simulation (SIGS-RS) must satisfy several critical quality attributes to ensure it remains a robust, easily manageable testing environment.
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-QA-1:} \textbf{Reliability:} The simulation engine shall sustain 99.9\% uptime during scheduled stress-testing windows. In the event of an isolated service failure, the containerized architecture must utilize Kubernetes self-healing capabilities to restart and restore middleware routing operations within 30 seconds.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-QA-2:} \textbf{Maintainability:} To facilitate rapid iteration and easy explanation during project reviews, the source code shall adhere to a strictly minimal design standard. The codebase must avoid verbose inline comments and utilize highly concise, simple variable naming conventions, ensuring the underlying routing logic remains accessible, straightforward, and fast to type.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-QA-3:} \textbf{Portability:} The system shall be entirely platform-agnostic at the operating system level, encapsulated completely within standard Docker containers to guarantee identical execution across local development environments and enterprise testing clusters.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{REQ-QA-4:} \textbf{Testability:} The core middleware subsystems (Anomalous Packet Inspector and Privacy Anonymizer) shall be architected as decoupled modules, allowing for independent unit testing of the threshold calculations and JSON-masking pipelines without requiring a live MQTT broker connection.\par
+\subsection{Business Rules}
+The operation and management of the Secure IoT Gateway Simulation (SIGS-RS) are governed by the following business rules and enterprise policies. These rules dictate role-based access and overarching system behaviors.
+
+\vspace{0.08in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{BR-1:} \textbf{Configuration Authority:} Only authenticated personnel formally designated with the 'Security Engineer' role shall have the authority to modify the baseline thresholds of the Anomalous Packet Inspector or alter the specific PII-stripping parameters within the Privacy Anonymizer.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{BR-2:} \textbf{Mandatory Processing Pipeline:} Under no operational circumstances shall telemetry payloads bypass the middleware security layers. All incoming data must be sequentially verified by the Inspector and sanitized by the Anonymizer before database insertion is permitted.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{BR-3:} \textbf{Compliance Lockout:} If the enterprise \emph{Data Anonymization and Privacy Compliance Guidelines} are revised, all simulation testing must be immediately suspended. Testing may only resume after the Privacy Anonymizer pipeline is updated and formally audited by the compliance team to reflect the new regulations.\par
+\vspace{0.04in}
+\noindent\hspace*{0.94in}\makebox[0.95in][l]{BR-4:} \textbf{Audit Accountability:} All system configuration modifications made via the management APIs must be permanently tied to the individual's enterprise identity in the audit log; anonymous or shared-account administrative changes are strictly prohibited.\par
+\clearpage
+\section{Other Requirements}
+\subsection{Database and Archival Requirements}
+The sanitized telemetry logs must be stored in a time-series optimized database architecture (specifically PostgreSQL equipped with the TimescaleDB extension). The data must be partitioned by timestamp (hyper-tables) to ensure that querying high-volume historical simulation data does not degrade the active ingestion performance.
+
+\subsection{Reuse Objectives}
+A core engineering objective of this simulation project is software reuse. The logic, algorithms, and threshold mechanisms developed for the \textbf{Anomalous Packet Inspector} and the \textbf{Privacy Anonymizer} must be architected as modular, decoupled microservices. This ensures the middleware layers can be directly ported to the physical edge gateway hardware during the next phase of enterprise deployment with minimal refactoring.
+
+\appendixheading{Appendix A: Glossary}
+\begin{itemize}
+\item \textbf{MQTT (Message Queuing Telemetry Transport):} A lightweight publish-subscribe messaging protocol designed for constrained devices and low-bandwidth networks, acting as the primary ingestion protocol for the simulation.
+\item \textbf{PII (Personally Identifiable Information):} Any data that could potentially identify a specific individual. In the context of this system, it primarily refers to sensor \emph{geolocation metadata} (e.g., latitude, longitude, and MAC addresses).
+\item \textbf{SIGS-RS:} Secure IoT Gateway Simulation for Resource Sensing (the system defined in this SRS).
+\item \textbf{Sliding-Window Algorithm:} A computational data structure used by the Anomalous Packet Inspector to maintain a rolling subset of recent telemetry data. It evaluates real-time transmission rates over a fixed timeframe to detect anomalies without retaining long-term state.
+\item \textbf{Telemetry Payload:} The JSON-formatted data packets containing simulated environmental readings and sensor metrics.
+\end{itemize}
+
+\appendixheading{Appendix B: Analysis Models}
+Detailed UML sequence diagrams, entity-relationship diagrams for the TimescaleDB output schemas, and specific state-transition models for the Anomalous Packet Inspector's packet-dropping logic are maintained dynamically in the internal Enterprise Architecture Wiki. 
+
+For the high-level structural representation of subsystem interconnections and the directional flow of telemetry data, refer to the \textbf{High-Level Data Flow Diagram} presented in \textbf{Section 2.2.2} of this document.
+
+\appendixheading{Appendix C: To Be Determined List}
+\begin{itemize}
+\item \textbf{TBD-1:} Finalize the exact JSON path schema definitions for the upcoming version (v1.1) of the external virtual sensor grid.
+\item \textbf{TBD-2:} Determine the absolute maximum connection pool limits for the external persistent PostgreSQL database during peak stress-testing scenarios (50,000+ packets per second).
+\item \textbf{TBD-3:} Define the specific OAuth 2.0 Identity Provider (IdP) endpoints that will be utilized to authenticate Security Engineers accessing the HTTP management APIs.
+\end{itemize}
+\end{document}

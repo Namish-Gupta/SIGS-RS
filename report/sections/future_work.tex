@@ -1,0 +1,18 @@
+\section{Future Work}
+
+While the current implementation of SIGS-RS satisfies all core functional and security specifications of the authoritative SRS within a local development and single-node testing environment, several avenues remain for future exploration, distributed scaling, and architectural hardening.
+
+\subsection{Multi-Node Cluster Scaling and Production Load Verification}
+The most prominent architectural extension is validating the gateway under true multi-node distributed conditions. Future work will involve deploying SIGS-RS onto a production Kubernetes cluster with minimum 16 vCPUs, 32~GB RAM, and dedicated networking. By placing an Envoy or Nginx ingress controller in front of 4--8 horizontally scaled gateway pods, future testing will evaluate whether the platform achieves the 50,000 packets/second throughput target specified in \texttt{REQ-PF-1} under real network socket load.
+
+\subsection{Hardware-Enforced WORM Storage for Security Logs}
+While the current PostgreSQL trigger (\texttt{trg\_audit\_immutable}) successfully rejects \texttt{UPDATE} and \texttt{DELETE} operations from application connections, a database superuser or compromised PostgreSQL administrator could theoretically disable triggers. Future iterations will route audit logs to true hardware-enforced Write-Once-Read-Many (WORM) storage, such as AWS S3 Object Lock in Compliance Mode or Azure Immutable Blob Storage, ensuring physical tamper-proofing across multi-year regulatory retention windows.
+
+\subsection{Distributed Redis Cluster Rate Limiting}
+In the current development environment, sliding-window inspection relied on the in-memory \texttt{collections.deque} implementation due to the absence of the optional \texttt{lupa} Lua interpreter for \texttt{fakeredis}. Future research will evaluate a dedicated multi-node Redis 7.2 Cluster with Redis Sentinel or Redis Enterprise, profiling network round-trip overhead and evaluating consistency guarantees during cross-zone partition events.
+
+\subsection{Machine Learning-Driven Streaming Anomaly Detection}
+The current Anomalous Packet Inspector applies deterministic physical threshold boundaries (e.g., $0 \le \text{pH} \le 14$). While computationally lightweight, sophisticated cyberattacks may inject false sensor values that remain within physical limits but deviate significantly from diurnal usage patterns. Future work will integrate lightweight streaming machine learning models, such as Streaming Half-Space Trees or Online Autoencoders, to detect multivariate anomalies and sensor drift in real time.
+
+\subsection{Hardware-Based Zero-Trust Device Attestation}
+To further strengthen the transport security perimeter (\texttt{REQ-TI-1}), the MQTT ingress subscriber can be extended to require hardware-bound client certificates issued by Trusted Platform Modules (TPM 2.0) residing on physical IoT gateways. Incorporating IEEE 802.1AR Secure Device Identifier (DevID) standards will eliminate credential theft and guarantee that only authorized, untampered physical sensors can establish TLS connections to the gateway.

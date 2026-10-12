@@ -62,6 +62,7 @@ async def health(request: Request, response: Response) -> HealthResponse:
             "circuit_breaker": "open" if cb_open else "closed",
             "database": "disconnected" if not _db_connected(app) else "connected",
             "mqtt": "disconnected" if not _mqtt_connected(app) else "connected",
+            "compliance": "lockout" if getattr(app.state, "compliance_lockout", False) else "verified",
         },
     )
 

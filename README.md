@@ -1,494 +1,280 @@
 # SIGS-RS — Secure IoT Gateway Simulation for Resource Sensing
 
-> Version 1.0.0 | Python 3.12 | FastAPI | PostgreSQL/TimescaleDB
+> **Version 1.0.0** | Python 3.12 | FastAPI | PostgreSQL & TimescaleDB | MQTT 8883 MQTTS | Docker & Kubernetes
 
-A backend simulation engine that models a community sensor grid and processes high-volume
-telemetry data through a two-stage security middleware:
-
-1. **Anomalous Packet Inspector** — sliding-window rate limiting + impossible-value detection
-2. **Privacy Anonymizer** — PII stripping (latitude, longitude, MAC address) before DB persistence
+**SIGS-RS** is an asynchronous edge telemetry ingestion gateway and security middleware engine. It models a municipal sensor grid across water distribution, electric power grids, and atmospheric air quality monitoring. The platform processes high-velocity telemetry streams through a strict, sequential two-stage security middleware that eliminates anomalous or malicious readings and strips personally identifiable information (PII) before persistent storage.
 
 ---
 
-## Architecture Overview
+## 1. Documentation Index
 
-```
-Virtual Sensor Grid (MQTT / HTTP)
-        │
-        ▼
-┌─────────────────────────────────────┐
-│  SIGS-RS Gateway                    │
-│                                     │
-│  [Ingestion Layer]                  │
-│    MQTT Subscriber (port 8883)      │
-│    HTTP POST /api/v1/telemetry      │
-│         │                           │
-│         ▼ asyncio.Queue             │
-│  [Anomalous Packet Inspector]       │
-│    Sliding-window (50 pkt/10s)     │
-│    Impossible-value checks          │
-│         │ verified only             │
-│  [Privacy Anonymizer]               │
-│    Strip: latitude, longitude,      │
-│           mac_address, geo          │
-│         │ sanitized                 │
-│  [Circuit Breaker] → [DB Pool]      │
-└─────────────────────────────────────┘
-        │
-        ▼
-PostgreSQL + TimescaleDB
-```
+Detailed technical specifications and operational runbooks are maintained in dedicated reference documents:
+
+| Document | Description |
+| :--- | :--- |
+| **[`ARCHITECTURE.md`](ARCHITECTURE.md)** | Subsystem breakdown, background concurrency tasks, architectural invariants, **Diagram 1 (System Architecture)**, and **Diagram 2 (Telemetry Sequence)**. |
+| **[`API.md`](API.md)** | Comprehensive REST catalog of all 15 endpoints, schemas, authentication, RBAC roles, and HTTP status codes. |
+| **[`DEPLOYMENT.md`](DEPLOYMENT.md)** | Local Python setup, Docker Compose multi-container stack, Kubernetes manifests, and **Diagram 4 (Deployment Architecture)**. |
+| **[`SECURITY.md`](SECURITY.md)** | Threat model, transport security, sliding-window rate limiting, PII sanitization, circuit breaker, audit triggers, and **Diagram 3 (Security Pipeline)**. |
+| **[`TESTING.md`](TESTING.md)** | Test inventory (580 unique tests: 579 passed, 1 skipped), unit/integration commands, coverage, and mocking strategy. |
+| **[`PERFORMANCE.md`](PERFORMANCE.md)** | Benchmark harness methodology, empirical Stages 0–2 results, queue dynamics, latency breakdowns, and SRS target compliance. |
+| **[`FINAL_AUDIT.md`](FINAL_AUDIT.md)** | Final production-style code review, SRS compliance traceability matrix, and security audit log. |
 
 ---
 
-## Quick Start (Local Development)
+## 2. System Architecture & Invariants
 
-### Prerequisites
+```
+                                  ┌──────────────────────────────────────────────┐
+                                  │               SIGS-RS Gateway                │
+┌─────────────────────────────┐   │                                              │   ┌──────────────────────────┐
+│ Virtual Sensor Grid         │───┼─► Ingestion Layer (MQTT 8883 / HTTP REST)    │   │ PostgreSQL + TimescaleDB │
+│ (Water, Energy, Air Quality)│   │       │                                      │   │                          │
+└─────────────────────────────┘   │       ▼ asyncio.Queue                        │   │ telemetry.sanitized_readings
+                                  │   Anomalous Packet Inspector                 │   │ (Hypertable partitioned) │
+                                  │       │ (Sliding-window + Impossible-values) │   │                          │
+                                  │       ▼                                      │   │ audit.security_log       │
+                                  │   Privacy Anonymizer                         │───┼─► (Immutable WORM trig.) │
+                                  │       │ (PII stripping: geo, MAC, device)    │   │                          │
+                                  │       ▼                                      │   │ config.middleware_settings
+                                  │   Circuit Breaker ──► Repository Pool        │   └──────────────────────────┘
+                                  └──────────────────────────────────────────────┘
+```
 
-- Python 3.12+
-- Docker & Docker Compose (for full stack)
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full Mermaid system architecture and telemetry sequence diagrams.
 
-### 1. Clone and install
+### Core Processing Invariant: Inspector → Anonymizer → Persistence
+The gateway enforces a non-negotiable architectural invariant:
+1. **Raw Telemetry Never Persists:** Telemetry cannot bypass middleware inspection or anonymization.
+2. **Sequential Stage Ordering:** Ingress packets are validated by the **Anomalous Packet Inspector** first. Packets violating rate limits (rolling 50 packets / 10 s per sensor) or physical boundary values (negative flows/energy, out-of-range AQI) are **dropped immediately and never reach the Privacy Anonymizer**.
+3. **Fail-Secure Anonymization:** Verified packets have all geolocation (`latitude`, `longitude`, `geo`), hardware MAC addresses (`mac_address`), and hardware identifiers (`device_id`) stripped before database insertion.
+4. **Resilience & Fail-Closed Guard:** A database write latency circuit breaker (> 2,000 ms) and BR-3 compliance guideline locks suspend incoming telemetry rather than permitting unverified persistence.
+
+---
+
+## 3. Technology Stack
+
+- **Application Framework:** Python 3.12, FastAPI, Uvicorn (ASGI), Pydantic v2.
+- **Asynchronous Ingestion:** `aiomqtt` (MQTT 3.1.1 / 5.0 client), `asyncio.Queue` in-memory buffering.
+- **Time-Series Persistence:** PostgreSQL 16 with TimescaleDB extension (`telemetry.sanitized_readings` hypertable partitioned by timestamp `ts`).
+- **Distributed Cache / Rate-Limiting:** Redis 7.2 (optional distributed sliding-window rate-limiting).
+- **Security & Cryptography:** PyJWT (HMAC-SHA256 tokens), Passlib with Bcrypt, Python `ssl` (TLS 1.2+ & mTLS).
+- **Observability:** Prometheus client exposition format (`/metrics`), structured JSON logging.
+- **Containerization & Orchestration:** Docker multi-stage builds (`docker/Dockerfile`), Docker Compose (`docker-compose.yml`), Kubernetes 1.28+ manifests (`k8s/`).
+
+---
+
+## 4. Quickstart: Running Locally
+
+### 4.1 Prerequisites
+- Python 3.12+ (tested with Python 3.12.3)
+- `pip` and Python `venv`
+- OpenSSL (optional, for token generation)
+
+### 4.2 Clone & Environment Setup
 
 ```bash
+# Clone the repository
 git clone <repo-url>
 cd sigs-rs
 
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-# Install with dev extras
+# Install dependencies in editable mode
 pip install -e ".[dev]"
+
+# Configure environment variables
+cp .env.example .env
 ```
 
-### 2. Configure environment
+### 4.3 Starting the Gateway
 
 ```bash
-copy .env.example .env
-# Edit .env as needed (defaults work for local dev)
+# Run standalone gateway (in development mode, uses InMemoryDatabasePool if DB is offline)
+uvicorn sigs_rs.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 3. Run the application (dev mode, no DB required)
+Verify service status:
+- **Liveness Probe:** `curl http://localhost:8000/health`
+- **Readiness Probe:** `curl http://localhost:8000/ready`
+- **Prometheus Metrics:** `curl http://localhost:8000/metrics`
+- **Swagger Documentation:** Open `http://localhost:8000/docs` in your browser.
+
+---
+
+## 5. MQTT Ingestion vs. External Broker
+
+The gateway includes an **MQTT Subscriber** (`src/sigs_rs/ingestion/mqtt_sub.py`), which connects to an **external MQTT Broker** (such as Eclipse Mosquitto or EMQX).
+
+- **Plaintext / Local Dev Broker:** Port `1883`
+- **Production TLS / MQTTS Broker:** Port `8883` (enforced when `MQTT_USE_TLS=true`)
+
+To run an external Mosquitto broker locally using Docker:
+```bash
+docker run -d --name mosquitto -p 1883:1883 -p 8883:8883 eclipse-mosquitto:2.0
+```
+
+---
+
+## 6. Virtual Sensor Grid Simulator & Attack Scenarios
+
+The simulator CLI (`simulator/cli.py`) generates synthetic IoT sensor traffic and allows operators to inject malicious traffic patterns to test the gateway's security controls.
+
+### 6.1 Basic Simulator Usage
 
 ```bash
-uvicorn sigs_rs.main:app --reload --host 0.0.0.0 --port 8000
+# Dry-run telemetry generation (10 sensors, 30s duration, no MQTT broker required)
+python -m simulator --profile smoke --dry-run
+
+# Run standard background telemetry publishing to local MQTT broker
+python -m simulator --mode NORMAL --sensors 25 --rate 5 --duration 60 --broker-host localhost --broker-port 1883
 ```
 
-Visit: http://localhost:8000/docs (OpenAPI UI)
+Available preconfigured profiles (`--profile`): `smoke`, `normal`, `stress`, `benchmark`, `dos`.
 
-### 4. Run the full stack with Docker Compose (Phase 12)
+### 6.2 Triggering Attack & Anomaly Traffic Modes
 
-A fresh clone can start the complete production-like stack with two commands:
+Operators can trigger security drops using dedicated traffic modes:
+
+```bash
+# 1. Trigger Rate-Limit Violation (burst exceeding 50 pkts / 10s per sensor)
+python -m simulator --mode RATE_ATTACK --sensors 10 --rate 100 --duration 10 --dry-run
+
+# 2. Trigger Impossible-Value Rejection (negative water/energy, impossible AQI)
+python -m simulator --mode INVALID_METRICS --sensors 20 --duration 15 --dry-run
+
+# 3. Trigger Malformed Payload Rejection (corrupted JSON, invalid fields)
+python -m simulator --mode MALFORMED_PAYLOAD --sensors 20 --duration 15 --dry-run
+
+# 4. Trigger High-Volume Traffic Bursts
+python -m simulator --mode BURST --sensors 50 --rate 200 --duration 20 --dry-run
+
+# 5. Inject a specific percentage of anomalies into normal traffic
+python -m simulator --mode MIXED --anomaly-percent 15.0 --malformed-percent 5.0 --duration 30 --dry-run
+```
+
+---
+
+## 7. Observing Drops, Metrics, and Persisted Records
+
+### 7.1 Observing Dropped Packets via Metrics
+View live packet rejection and anomaly counters exposed at `/metrics`:
+```bash
+curl -s http://localhost:8000/metrics | grep sigs_packets_
+```
+Key counters:
+- `sigs_packets_dropped_rate_total`: Packets dropped by sliding-window rate limiting.
+- `sigs_packets_dropped_invalid_metrics_total`: Packets dropped by impossible-value validator.
+- `sigs_packets_malformed_total`: Packets rejected due to JSON/schema errors or oversized payloads (> 512 KB).
+- `sigs_packets_dropped_anonymization_total`: Packets rejected during PII stripping fail-secure check.
+
+### 7.2 Observing Security Audit Logs
+Query the immutable security audit log via the management API (requires JWT Bearer token):
+
+```bash
+# 1. Obtain an access token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "changeme"}' | jq -r .access_token)
+
+# 2. Query audit logs for dropped packets and security events
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/audit/logs?event_type=RATE_LIMIT_EXCEEDED" | jq .
+```
+
+### 7.3 Inspecting Sanitized Database Records
+When connected to TimescaleDB, verify that all geolocation and hardware MAC addresses were stripped:
+
+```bash
+# Query sanitized readings
+docker exec sigs-timescaledb psql -U sigs_user -d sigs_db -c \
+  "SELECT id, ts, sensor_id, resource_type, value, unit, metadata FROM telemetry.sanitized_readings LIMIT 5;"
+
+# Verify zero PII in metadata (should return 0 rows)
+docker exec sigs-timescaledb psql -U sigs_user -d sigs_db -c \
+  "SELECT COUNT(*) FROM telemetry.sanitized_readings WHERE metadata ? 'latitude' OR metadata ? 'mac_address' OR metadata ? 'geo';"
+```
+
+---
+
+## 8. Verification & Performance Benchmarking
+
+### 8.1 Running Automated Tests
+The repository contains 580 unique collected tests (579 passing, 1 skipped):
+
+```bash
+# Run the complete test suite
+pytest -q
+
+# Run unit tests only (463 tests)
+pytest tests/unit/ -v
+
+# Run integration tests only (96 tests)
+pytest tests/integration/ -v
+
+# Run Phase 16 audit hardening regressions (32 tests)
+pytest tests/unit/test_phase16_audit_hardening.py -v
+```
+See [`TESTING.md`](TESTING.md) for module-level commands and skip rationale.
+
+### 8.2 Running Performance Benchmarks
+Run the progressive workload benchmarking suite:
+
+```bash
+# Execute safe baseline Stages 0, 1, and 2 (10, 100, and 1,000 sensors)
+python -m benchmarks.cli --stages 0,1,2 --suites all --output docs/phase15/benchmark-report.md
+```
+See [`PERFORMANCE.md`](PERFORMANCE.md) for full latency distributions, queue metrics, and bottleneck attribution.
+
+---
+
+## 9. Containerized Deployment (Docker & Kubernetes)
+
+### 9.1 Docker Compose Full Stack
+Start the complete 5-container stack (TimescaleDB, Mosquitto, Gateway, Simulator, Prometheus):
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
+Teardown: `docker compose down -v`.
 
-#### Services Started
-
-| Service | Container Name | Port(s) | Health Check | Description |
-|---|---|---|---|---|
-| **gateway** | `sigs-gateway` | `8000:8000` | HTTP `GET /health` | FastAPI ingestion gateway, API docs, and metrics |
-| **timescaledb** | `sigs-timescaledb` | `5432:5432` | `pg_isready` | PostgreSQL 16 + TimescaleDB with hypertable partitioning |
-| **mosquitto** | `sigs-mosquitto` | `1883:1883`, `8883:8883` | MQTT ping (`mosquitto_pub`) | Eclipse Mosquitto broker (plain & TLS) |
-| **simulator** | `sigs-simulator` | internal | Depends on gateway & broker | Virtual IoT sensor grid generating live telemetry |
-| **prometheus** | `sigs-prometheus` | `9090:9090` | HTTP `GET /-/healthy` | Prometheus server scraping gateway runtime `/metrics` |
-
-#### Verify System Operation
+### 9.2 Kubernetes Deployment
+Apply the manifests located in [`k8s/`](k8s/):
 
 ```bash
-# 1. Check all container statuses and health states
-docker compose ps
-
-# 2. Verify gateway health and component readiness
-curl http://localhost:8000/health
-curl http://localhost:8000/ready
-
-# 3. View live Prometheus metrics scraped from the gateway
-curl http://localhost:8000/metrics
-
-# 4. View persisted telemetry in TimescaleDB
-docker exec sigs-timescaledb psql -U sigs_user -d sigs_db -c \
-  "SELECT COUNT(*), resource_type FROM telemetry.sanitized_readings GROUP BY resource_type;"
-
-# 5. Open monitoring dashboards in browser:
-#    - Gateway Swagger Docs: http://localhost:8000/docs
-#    - Prometheus Dashboard: http://localhost:9090
-```
-
-#### Development Mode (Live Code Reloading)
-
-To run with live host code volume mounting (`./src` and `./simulator`) and uvicorn auto-reload:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-```
-
-#### Running Custom Simulator Traffic Profiles
-
-You can run targeted simulation workloads on-demand using the containerized simulator:
-
-```bash
-# Run a rate-attack simulation against the running gateway
-docker compose run --rm simulator python -m simulator --mode RATE_ATTACK --rate 50 --duration 10
-
-# Run a high-volume stress profile
-docker compose run --rm simulator python -m simulator --profile stress --duration 30
-```
-
-#### Stop and Teardown
-
-```bash
-# Stop all services
-docker compose down
-
-# Stop all services and wipe persistent database & broker volumes
-docker compose down -v
-```
----
-
-## API Reference
-
-The full interactive API docs are available at `/docs` (Swagger UI) or `/redoc`.
-
-### Health & Metrics
-
-| Endpoint | Method | Auth | Description |
-|---|---|---|---|
-| `/health` | GET | None | Liveness probe (K8s) |
-| `/ready` | GET | None | Readiness probe |
-| `/metrics` | GET | None | Runtime metrics |
-
-### Authentication
-
-| Endpoint | Method | Auth | Description |
-|---|---|---|---|
-| `/api/v1/auth/token` | POST | None | Issue JWT token |
-
-**Example:**
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "changeme"}'
-```
-
-### Telemetry Ingestion
-
-| Endpoint | Method | Auth | Description |
-|---|---|---|---|
-| `/api/v1/telemetry` | POST | JWT | Ingest single packet |
-| `/api/v1/telemetry/batch` | POST | JWT | Ingest batch |
-
-**Example payload:**
-```json
-{
-  "sensor_id": "sensor-042",
-  "timestamp": "2026-07-17T10:30:00Z",
-  "resource_type": "water",
-  "value": 42.7,
-  "unit": "liters_per_min",
-  "geo": { "latitude": 12.9716, "longitude": 80.2209 },
-  "mac_address": "AA:BB:CC:DD:EE:FF"
-}
-```
-
-### Configuration (Security Engineer only)
-
-| Endpoint | Method | Auth | Description |
-|---|---|---|---|
-| `/api/v1/config/inspector` | GET/PUT | JWT (security_engineer) | Sliding-window thresholds |
-| `/api/v1/config/anonymizer` | GET/PUT | JWT (security_engineer) | PII field list |
-| `/api/v1/audit/logs` | GET | JWT (security_engineer) | Query audit log |
-
----
-
-## Running Tests
-
-```bash
-# All tests
-pytest
-
-# Unit tests only (no Docker required)
-pytest tests/unit/ -v
-
-# With coverage
-pytest --cov=sigs_rs --cov-report=html
-
-# Specific test file
-pytest tests/unit/test_anonymizer.py -v
-```
-
----
-
-## Load Simulator
-
-```bash
-# Run smoke profile (10 sensors, 30s) — Phase 9 full implementation
-python -m loadtest.sensor_simulator --profile smoke
-
-# Available profiles: smoke, normal, stress, benchmark, dos
-```
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `DATABASE_URL` | `postgresql+asyncpg://sigs_user:sigs_pass@localhost:5432/sigs_db` | TimescaleDB connection string |
-| `MQTT_BROKER_HOST` | `localhost` | MQTT broker hostname |
-| `MQTT_BROKER_PORT` | `8883` | MQTT port (TLS) |
-| `MQTT_USE_TLS` | `false` | Enable TLS for MQTT |
-| `INSPECTOR_WINDOW_SECONDS` | `10` | Sliding window duration |
-| `INSPECTOR_MAX_PACKETS_PER_WINDOW` | `50` | Rate limit per sensor |
-| `ANONYMIZER_PII_FIELDS` | `latitude,longitude,lat,lon,mac_address,geo` | Fields to strip |
-| `JWT_SECRET_KEY` | *(must set)* | JWT signing secret |
-| `ADMIN_USERNAME` | `admin` | Seeded admin username |
-| `ADMIN_PASSWORD` | `changeme` | Seeded admin password |
-| `CIRCUIT_BREAKER_FAILURE_THRESHOLD_MS` | `2000` | DB latency trip threshold |
-| `MAX_PAYLOAD_SIZE_BYTES` | `524288` | Max packet size (512 KB) |
-
-See `.env.example` for the full list.
-
----
-
-## Project Structure
-
-```
-sigs-rs/
-├── src/sigs_rs/
-│   ├── main.py              # Application entrypoint
-│   ├── config.py            # Pydantic Settings
-│   ├── schemas.py           # Pydantic models
-│   ├── common/
-│   │   ├── constants.py     # SRS-derived constants
-│   │   └── exceptions.py    # Exception hierarchy
-│   ├── ingestion/
-│   │   ├── buffer.py        # asyncio.Queue wrapper
-│   │   ├── http_ingest.py   # FastAPI telemetry endpoints
-│   │   └── mqtt_sub.py      # MQTT subscriber (Phase 4)
-│   ├── middleware/
-│   │   ├── sliding_window.py   # Sliding-window algorithm (Phase 3)
-│   │   ├── payload_validator.py # Impossible-value checks (Phase 3)
-│   │   ├── inspector.py        # Anomalous Packet Inspector (Phase 3)
-│   │   ├── anonymizer.py       # Privacy Anonymizer ✓ implemented
-│   │   └── pipeline.py         # Orchestrator (Phase 4)
-│   ├── persistence/
-│   │   ├── database.py      # asyncpg pool (Phase 2)
-│   │   ├── repository.py    # INSERT operations (Phase 2)
-│   │   └── circuit_breaker.py # Circuit breaker (Phase 5)
-│   ├── auth/
-│   │   ├── jwt_handler.py   # JWT utils ✓ implemented
-│   │   ├── roles.py         # Role checks ✓ implemented
-│   │   ├── dependencies.py  # FastAPI Depends() guards ✓
-│   │   └── auth_router.py   # /auth/token endpoint ✓
-│   └── management/
-│       ├── audit_logger.py  # Dual audit logging ✓ implemented
-│       ├── audit_api.py     # /audit/logs (Phase 7)
-│       ├── config_api.py    # /config/* endpoints ✓ stub
-│       └── health.py        # /health /metrics ✓ implemented
-├── tests/
-│   ├── conftest.py          # Shared fixtures
-│   ├── unit/                # No I/O dependencies
-│   └── integration/         # FastAPI test client
-├── loadtest/
-│   └── sensor_simulator.py  # Load profiles (Phase 9)
-├── docker/
-│   ├── Dockerfile           # Multi-stage build
-│   ├── Dockerfile.mosquitto
-│   └── mosquitto.conf
-├── docker-compose.yml
-├── pyproject.toml
-└── .env.example
-```
-
----
-
-## Development Phases
-
-| Phase | Status | Description |
-|---|---|---|
-| **1** | ✅ Complete | Project skeleton, schemas, anonymizer, auth, health |
-| **2** | ✅ Complete | Database layer, TimescaleDB schema, migrations |
-| **3** | ✅ Complete | Full Inspector: sliding-window + impossible-value algorithms |
-| **4** | ✅ Complete | MQTT subscriber, pipeline wiring |
-| **5** | ✅ Complete | Circuit breaker implementation, fail-closed |
-| **6** | ✅ Complete | Full auth: user store, OAuth 2.0 |
-| **7** | ✅ Complete | Config API persistence, audit log queries |
-| **8** | ✅ Complete | Docker finalization, CI |
-| **9** | ✅ Complete | Load simulator full implementation |
-| **10** | ✅ Complete | Observability, Prometheus metrics, structured logging |
-| **11** | ✅ Complete | Safety, circuit breaker recovery & fail-closed behavior |
-| **12** | ✅ Complete | Complete local Docker environment (Docker Compose, TimescaleDB, Mosquitto, Simulator, Prometheus) |
-| **13** | ✅ Complete | Kubernetes deployment manifests, HPA, probes, PDB |
-
----
-
-## Phase 13 — Kubernetes Deployment
-
-Manifests live in [`k8s/`](k8s/).
-
-| File | Contents |
-|---|---|
-| [`namespace.yaml`](k8s/namespace.yaml) | `sigs-rs` namespace |
-| [`configmap.yaml`](k8s/configmap.yaml) | All non-secret configuration |
-| [`secret-template.yaml`](k8s/secret-template.yaml) | Secret template — **fill before applying** |
-| [`deployment.yaml`](k8s/deployment.yaml) | Gateway Deployment with readiness/liveness/startup probes |
-| [`service.yaml`](k8s/service.yaml) | ClusterIP Service for the gateway |
-| [`hpa.yaml`](k8s/hpa.yaml) | HorizontalPodAutoscaler (75% CPU, ~2 min stabilization) |
-| [`timescaledb.yaml`](k8s/timescaledb.yaml) | Single-node TimescaleDB StatefulSet + PVC |
-| [`mosquitto.yaml`](k8s/mosquitto.yaml) | Mosquitto Deployment, ConfigMap, and Service |
-| [`pdb.yaml`](k8s/pdb.yaml) | PodDisruptionBudget (minAvailable: 1) |
-| [`kustomization.yaml`](k8s/kustomization.yaml) | Kustomize entry point |
-
-
-
-### Quickstart — minikube
-
-```bash
-# 1. Install minikube
-#    https://minikube.sigs.k8s.io/docs/start/
-
-# 2. Start a cluster
-minikube start --cpus=4 --memory=6144
-
-# 3. Enable required add-ons
-minikube addons enable metrics-server   # required by HPA
-minikube addons enable ingress          # optional: expose gateway externally
-
-# 4. Build the gateway image inside minikube's Docker daemon
-eval $(minikube docker-env)
-docker build -f docker/Dockerfile -t sigs-rs-gateway:1.0.0 .
-
-# 5. Create the namespace
+# 1. Create namespace
 kubectl apply -f k8s/namespace.yaml
 
-# 6. Create real secrets (NEVER commit real values to git)
-kubectl create secret generic sigs-rs-secret \
-  --namespace=sigs-rs \
-  --from-literal=DATABASE_URL="postgresql+asyncpg://sigs_user:YOURPASSWORD@timescaledb:5432/sigs_db" \
-  --from-literal=POSTGRES_PASSWORD="YOURPASSWORD" \
+# 2. Create production secrets
+kubectl create secret generic sigs-rs-secret -n sigs-rs \
+  --from-literal=DATABASE_URL="postgresql+asyncpg://sigs_user:SecretPass@timescaledb:5432/sigs_db" \
+  --from-literal=POSTGRES_PASSWORD="SecretPass" \
   --from-literal=JWT_SECRET_KEY="$(openssl rand -hex 64)" \
   --from-literal=ADMIN_USERNAME="admin" \
   --from-literal=ADMIN_PASSWORD="$(openssl rand -hex 16)"
 
-# 7. Apply remaining manifests (skip secret-template.yaml — real secret already applied)
+# 3. Apply infrastructure and gateway manifests
 kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/redis.yaml
 kubectl apply -f k8s/timescaledb.yaml
 kubectl apply -f k8s/mosquitto.yaml
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s/hpa.yaml
 kubectl apply -f k8s/pdb.yaml
-
-# 8. Wait for all pods to be ready
-kubectl rollout status deployment/sigs-rs-gateway -n sigs-rs
-kubectl get pods -n sigs-rs
-
-# 9. Access the gateway
-minikube service sigs-rs-gateway -n sigs-rs --url
-# Or port-forward:
-kubectl port-forward svc/sigs-rs-gateway 8080:80 -n sigs-rs &
-curl http://localhost:8080/health
-curl http://localhost:8080/metrics
 ```
-
-### Quickstart — kind
-
-```bash
-# 1. Create a cluster
-kind create cluster --name sigs-rs
-
-# 2. Load the gateway image into kind
-docker build -f docker/Dockerfile -t sigs-rs-gateway:1.0.0 .
-kind load docker-image sigs-rs-gateway:1.0.0 --name sigs-rs
-
-# 3. Follow steps 5–9 from the minikube instructions above.
-
-# 4. Port-forward (kind has no minikube tunnel):
-kubectl port-forward svc/sigs-rs-gateway 8080:80 -n sigs-rs &
-curl http://localhost:8080/health
-```
-
-### HPA Verification
-
-```bash
-# Watch HPA decisions in real time
-kubectl get hpa sigs-rs-gateway-hpa -n sigs-rs -w
-
-# Generate CPU load to trigger scaling (separate terminal)
-kubectl run -it --rm load --image=busybox --restart=Never -n sigs-rs -- \
-  sh -c "while true; do wget -qO- http://sigs-rs-gateway/health; done"
-
-# Note: stabilizationWindowSeconds: 120 for scaleUp evaluates the highest recommendation
-# over the past 2 minutes to prevent rapid fluctuation, but Kubernetes HPA does NOT strictly
-# guarantee load remains above 75% for 120s continuously before it scales up.
-# Scale down waits 300s to avoid thrashing.
-```
-
-### Observability
-
-```bash
-# Health (liveness / fail-closed state)
-curl http://localhost:8080/health
-
-# Readiness
-curl http://localhost:8080/ready
-
-# Prometheus text exposition format
-curl http://localhost:8080/metrics
-
-# JSON metrics
-curl -H "Accept: application/json" http://localhost:8080/metrics
-
-# Describe HPA events and decisions
-kubectl describe hpa sigs-rs-gateway-hpa -n sigs-rs
-
-# Structured logs from all gateway pods
-kubectl logs -l app.kubernetes.io/component=gateway -n sigs-rs --follow
-```
-
-### Production Considerations
-
-| Concern | Current (local/demo) | Production recommendation |
-|---|---|---|
-| **Sliding-window state** | ✅ Redis-backed shared `SlidingWindow` | Redis cluster with persistence and eviction |
-| **MQTT duplicate delivery** | ✅ MQTT shared subscriptions (`$share/sigs-rs/telemetry/#`) | EMQX cluster or AWS IoT Core |
-| **Circuit breaker state** | Per-pod, independent (Intentional) | Shared state is generally an anti-pattern. If one pod loses DB connectivity, only that pod should trip. If the DB is globally down, all pods will independently trip. |
-| **TimescaleDB** | Single-node StatefulSet | Managed cloud DB or TimescaleDB Operator with replication |
-| **Mosquitto** | Single-pod, no clustering | EMQX cluster / managed MQTT (AWS IoT Core, HiveMQ Cloud) |
-| **TLS** | Disabled (plaintext 1883) | mTLS on port 8883 (SRS REQ-TI-1, REQ-SE-1) |
-| **Secrets** | `kubectl create secret` | HashiCorp Vault, AWS Secrets Manager, Sealed Secrets, SOPS |
-| **Image** | `IfNotPresent` / local build | Pinned digest + private registry + image scanning |
-| **Ingress** | Port-forward | NGINX/Traefik Ingress + TLS cert-manager |
-| **Monitoring** | `/metrics` text scrape | Prometheus Operator + Grafana dashboards + alerting |
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for scaling, monitoring, and teardown runbooks.
 
 ---
 
-## SRS Compliance
+## 10. Known Limitations & Verification Boundaries
 
-| Requirement | Status |
-|---|---|
-| REQ-TI-1: MQTT on port 8883 with TLS | Phase 4 |
-| REQ-TI-2: JSON schema validation | ✅ Pydantic in Phase 1 |
-| REQ-TI-3: 512 KB payload limit | ✅ Enforced in http_ingest.py |
-| REQ-TI-4: In-memory ingestion queue | ✅ IngestionQueue Phase 1 |
-| REQ-API-1/2: Sliding-window algorithm | Phase 3 |
-| REQ-API-3: Impossible-value detection | Phase 3 |
-| REQ-PA-1/4: PII stripping + fail-secure | ✅ anonymizer.py Phase 1 |
-| REQ-SE-2: JWT authentication | ✅ Phase 1 |
-| REQ-SE-4: Audit logging | ✅ AuditLogger Phase 1 |
-| REQ-SF-1: Production DB guard | ✅ config.py Phase 1 |
-| REQ-SF-2: Circuit breaker | Phase 5 |
-| REQ-QA-1: K8s liveness restart < 30 s | ✅ Phase 13 (5 s period × 3 = 15 s) |
-| REQ-QA-3: Kubernetes readiness | ✅ Phase 13 |
-| REQ-QA-4: Independently testable middleware | ✅ Phase 1 |
+To maintain absolute technical integrity, the following limitations are explicitly documented:
 
----
-
-## License
-
-MIT — see [SRS references](docs/SRS.pdf) for compliance documentation.
+- **REQ-PF-1 (50,000 pkts/s Across 10,000 Sensors):** Marked **NOT VERIFIED AT PRODUCTION SCALE**. Local single-core microbenchmarks verified ~150,000 pkts/s for Inspector alone and up to 3,820 pkts/s persisted end-to-end, but 50k pkts/s across 10,000 sensors requires a distributed Kubernetes cluster meeting the SRS hardware specification (16 vCPUs, 32 GB RAM).
+- **REQ-TI-1 / REQ-SE-1 (MQTTS Port 8883):** Local TLS context building and port validation are verified. Live broker handshake in production requires connecting to managed staging broker infrastructure.
+- **REQ-SE-4 (Immutable Audit Storage):** Immutability is enforced via PostgreSQL trigger `trg_audit_immutable`, which blocks `UPDATE` and `DELETE` operations. This is database-level enforcement, not hardware WORM storage.
+- **SRS BR-3 (Compliance Lockout Immediacy):** Lockout enforcement is immediate on the local instance. Across a distributed cluster, synchronization occurs via database polling with up to a 1.0-second convergence window.
