@@ -1,0 +1,116 @@
+{
+  "python": "3.13.14 (tags/v3.13.14:fd17997, Jun 10 2026, 13:03:48) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "model": "all-MiniLM-L6-v2",
+  "top_k": 10,
+  "numpy": "2.5.1",
+  "corpus": {
+    "requirements": 58,
+    "nodes": 1210,
+    "files": 116,
+    "gold_links": 308,
+    "nodes_with_javadoc": 933
+  },
+  "runs": [
+    {
+      "run_id": "B0",
+      "representation": "tfidf",
+      "granularity": "file",
+      "query_expansion": false,
+      "beta": 0.0,
+      "isolates": "classic baseline"
+    },
+    {
+      "run_id": "B1",
+      "representation": "tfidf",
+      "granularity": "node",
+      "query_expansion": false,
+      "beta": 0.0,
+      "isolates": "does node granularity alone help?"
+    },
+    {
+      "run_id": "E0",
+      "representation": "embedding",
+      "granularity": "file",
+      "query_expansion": false,
+      "beta": 0.0,
+      "isolates": "does semantics alone help?"
+    },
+    {
+      "run_id": "E1",
+      "representation": "embedding",
+      "granularity": "node",
+      "query_expansion": false,
+      "beta": 0.0,
+      "isolates": "our core method"
+    },
+    {
+      "run_id": "E2",
+      "representation": "embedding",
+      "granularity": "node",
+      "query_expansion": true,
+      "beta": 0.0,
+      "isolates": "does requirement rewriting help?"
+    },
+    {
+      "run_id": "E3",
+      "representation": "embedding",
+      "granularity": "node",
+      "query_expansion": true,
+      "beta": 0.3,
+      "isolates": "does lexical signal add on top?"
+    }
+  ],
+  "results": {
+    "B0": {
+      "MAP": 0.23320950634964838,
+      "P@5": 0.2631578947368421,
+      "R@5": 0.2686159844054581,
+      "P@10": 0.20526315789473687,
+      "R@10": 0.39829434697855753
+    },
+    "B1": {
+      "MAP": 0.2627551103287319,
+      "P@5": 0.2982456140350877,
+      "R@5": 0.29924115845168475,
+      "P@10": 0.21228070175438596,
+      "R@10": 0.40915483152325255
+    },
+    "E0": {
+      "MAP": 0.36580110991765125,
+      "P@5": 0.39298245614035093,
+      "R@5": 0.38175995544416597,
+      "P@10": 0.2771929824561404,
+      "R@10": 0.5164786967418546
+    },
+    "E1": {
+      "MAP": 0.40895067806199803,
+      "P@5": 0.4070175438596491,
+      "R@5": 0.42793790030632134,
+      "P@10": 0.2894736842105263,
+      "R@10": 0.5561890838206627
+    },
+    "E2": {
+      "MAP": 0.405741668987283,
+      "P@5": 0.41754385964912283,
+      "R@5": 0.43471177944862155,
+      "P@10": 0.3087719298245614,
+      "R@10": 0.5997911445279867
+    },
+    "E3": {
+      "MAP": 0.4053188526872737,
+      "P@5": 0.43157894736842106,
+      "R@5": 0.4466165413533834,
+      "P@10": 0.3087719298245614,
+      "R@10": 0.598329156223893
+    }
+  },
+  "timings_seconds": {
+    "load requirements": 0.0037142000001040287,
+    "parse java": 0.12111460000005536,
+    "build node docs": 0.09413539999968634,
+    "load gold links": 0.0003145000000586151,
+    "embed requirements": 0.0005168000002413464,
+    "embed nodes": 0.0010867999999391031
+  }
+}

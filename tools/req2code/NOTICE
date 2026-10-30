@@ -1,0 +1,38 @@
+req2code
+Copyright 2026 the req2code authors
+
+This product includes software developed by the req2code authors, licensed under
+the Apache License, Version 2.0. See the LICENSE file for terms.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY DATA ATTRIBUTION
+--------------------------------------------------------------------------------
+
+This project evaluates against the eTour traceability dataset.
+
+eTour originates with the Center of Excellence for Software & Systems
+Traceability (CoEST), and has been used extensively in requirements-traceability
+research. Credit for the corpus belongs to its original authors.
+
+The packaged form used here was obtained from:
+
+    finegrained-traceability (FTLR)
+    https://github.com/tobhey/finegrained-traceability
+    Tobias Hey et al.
+    Licensed under GPL-3.0
+
+SCOPE OF USE
+
+This project uses DATA from the FTLR repository only. No source code from that
+repository has been copied into, adapted for, or incorporated into this project.
+
+This distinction is deliberate and load-bearing. FTLR is licensed under GPL-3.0,
+a copyleft license; this project is licensed under Apache-2.0, a permissive
+license. Incorporating GPL-3.0 source into an Apache-2.0 project would create a
+license conflict. Reading published work for ideas is ordinary scholarship and
+is not restricted by either license; copying implementation is, and we do not.
+
+The dataset itself is not redistributed as part of this repository. The `data/`
+directory is excluded from version control, and the README documents how to
+obtain the corpus from its original source. Users who fetch the eTour dataset do
+so directly from the FTLR repository and are subject to its terms.

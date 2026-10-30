@@ -64,3 +64,6 @@ pgdata/
 venv/
 __pycache__/
 .pytest_cache/
+
+# req2code workspace (per-developer stated requirements)
+.req2code/

@@ -1,0 +1,23 @@
+{
+  "875ec985a320eea8ae7d": {
+    "req_id": "UC20.txt",
+    "node_id": "AdvertisementManager.java::insertBanner#153",
+    "model": "claude-opus-4-8 (authored in Claude Code session, not via API)",
+    "prompt_version": "v1",
+    "justification": "This method directly implements the requirement. `insertBanner(int pIdRefreshmentPoint, ImageIcon pImageBanner)` takes exactly the two inputs the use case describes -- the selected refreshment point and the chosen image -- and performs the validation the flow of events specifies: `ControlData.checkImmagine` validates the image characteristics (step 4's \"check the characteristics of the inserted\"), and the `numBanner < maxBanner` guard against `convention.getMaxBanner()` enforces the per-point ceiling, throwing `ErrorMessage.ERROR_NUM_BANNER` when it is reached. That throw corresponds precisely to the stated exit condition \"The point of eating has already entered the maximum number of banners allowed\". The method then persists the image to the filesystem and calls `dbBanner.insertBanner(banner)` to complete the insertion."
+  },
+  "3c5ec6808d2dfad4e1ab": {
+    "req_id": "UC38.txt",
+    "node_id": "AdvertisementManager.java::insertBanner#153",
+    "model": "claude-opus-4-8 (authored in Claude Code session, not via API)",
+    "prompt_version": "v1",
+    "justification": "This method satisfies the requirement's behaviour, with one caveat worth noting. The insertion logic matches exactly: image validation via `ControlData.checkImmagine`, the maximum-banner check against `convention.getMaxBanner()`, filesystem persistence, and the final `dbBanner.insertBanner(banner)` call. However, UC38 differs from UC20 only in its participating actor -- here the Refreshment Point Operator rather than the Agency Operator -- and this single method contains no actor or authorisation check. It implements the shared banner-insertion behaviour both use cases require, but the actor distinction the requirement makes is enforced elsewhere (or not at all). The trace is correct, but the requirement-to-code relationship here is many-to-one."
+  },
+  "9aea8e36454d61e9841d": {
+    "req_id": "UC48.txt",
+    "node_id": "ITouristClientManager.java::modifyGenericPreference#55",
+    "model": "claude-opus-4-8 (authored in Claude Code session, not via API)",
+    "prompt_version": "v1",
+    "justification": "This declares the contract the requirement needs, but is an interface method and therefore contains no implementing logic. The name and Javadoc map cleanly onto the requirement -- \"Method for changing the Preferences generously given Tourists\" against the use case \"Edit Preferences generic personal\" -- and `BeanGenericPreference pGenericPreferencNew` carries the edited form data that step 3 submits. Note the Javadoc is stale relative to the signature: it documents `pIdTourist` and `pGenericPreferenceVecchie` parameters that the declaration does not actually take. For a complete trace on this requirement the implementing class should also be inspected; this node establishes the interface only."
+  }
+}

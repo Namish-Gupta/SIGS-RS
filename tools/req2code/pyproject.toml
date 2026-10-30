@@ -1,0 +1,22 @@
+[tool.pytest.ini_options]
+# Puts the repo root on sys.path so `from src.contracts import ...` resolves
+# without needing `pip install -e .`. One line here beats a packaging setup we
+# do not otherwise need.
+pythonpath = ["."]
+testpaths = ["tests"]
+# The suite is offline and instant by design -- no model download, no corpus.
+# Tests that need the real sentence-transformer are marked `slow` and excluded
+# by default; run them with `pytest -m slow` (or `pytest -m ""` for everything).
+addopts = "-m 'not slow'"
+markers = [
+    "slow: needs the real embedding model (~3.5s load, warm models/ required)",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/F: pyflakes + pycodestyle errors. I: import sorting. UP: modern syntax.
+# B: bugbear (real bug patterns, e.g. mutable default arguments).
+select = ["E", "F", "I", "UP", "B"]
